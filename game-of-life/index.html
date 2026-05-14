@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conway's Game of Life — 康威生命游戏</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f0f14;
+  --surface: #1a1a24;
+  --border: #2a2a3a;
+  --text: #e0e0e0;
+  --text-dim: #888;
+  --accent: #4ade80;
+  --accent-glow: rgba(74, 222, 128, 0.3);
+  --danger: #f87171;
+  --danger-glow: rgba(248, 113, 113, 0.3);
+  --info: #60a5fa;
+  --canvas-bg: #0a0a10;
+  --cell-alive: #4ade80;
+  --cell-dead: #151520;
+  --grid-line: rgba(255, 255, 255, 0.04);
+  --radius: 8px;
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  user-select: none;
+}
+
+/* ── HEADER ── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.header h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), #22d3ee);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.header .subtitle {
+  font-size: 1rem;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.lang-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: var(--font);
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.lang-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── MAIN LAYOUT ── */
+.main-container {
+  display: flex;
+  gap: 20px;
+  width: 100%;
+  max-width: 1200px;
+  flex: 1;
+}
+
+.canvas-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  min-height: 500px;
+  position: relative;
+}
+
+canvas {
+  display: block;
+  cursor: crosshair;
+  image-rendering: crisp-edges;
+}
+
+.sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sidebar h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.rules-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rules-list li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.rules-list .rule-num {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.legend-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.legend-dot.alive { background: var(--cell-alive); box-shadow: 0 0 6px var(--accent-glow); }
+.legend-dot.dead  { background: var(--cell-dead); border: 1px solid var(--border); }
+
+/* ── CONTROLS ── */
+.controls-bar {
+  width: 100%;
+  max-width: 1200px;
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.btn {
+  padding: 8px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-family: var(--font);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn:hover {
+  border-color: var(--accent);
+  background: #1e2a24;
+}
+.btn:active { transform: scale(0.97); }
+.btn.primary {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.btn.primary:hover {
+  background: #6ee7a0;
+}
+.btn.primary.paused {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.btn.danger:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.speed-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+.speed-group label {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.speed-group input[type="range"] {
+  width: 100px;
+  accent-color: var(--accent);
+}
+
+.stats {
+  display: flex;
+  gap: 20px;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+.stats span { color: var(--accent); font-weight: 600; }
+
+/* ── FOOTER ── */
+.footer {
+  margin-top: 16px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+.footer a { color: var(--accent); text-decoration: none; }
+.footer a:hover { text-decoration: underline; }
+.footer .divider { margin: 0 12px; opacity: 0.3; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 900px) {
+  .main-container { flex-direction: column; }
+  .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; gap: 14px; padding: 14px; }
+  .sidebar > div { flex: 1; min-width: 200px; }
+  .sidebar h3 { font-size: 0.82rem; }
+  .sidebar .rules-list li, .sidebar .legend-item { font-size: 0.78rem; }
+  .canvas-panel { min-height: 360px; }
+  .controls-bar { justify-content: center; }
+  .speed-group { margin-left: 0; }
+}
+@media (max-width: 500px) {
+  .header h1 { font-size: 1.2rem; }
+  .sidebar { flex-direction: column; }
+  .btn { padding: 7px 12px; font-size: 0.8rem; }
+  .stats { gap: 10px; font-size: 0.75rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div style="text-align:center">
+    <h1 data-i18n="title">Conway's Game of Life</h1>
+    <div class="subtitle" data-i18n="subtitle">康威生命游戏</div>
+  </div>
+  <button class="lang-btn" id="langToggle" data-i18n="langLabel">中文</button>
+</div>
+
+<div class="main-container" id="mainContainer">
+  <div class="canvas-panel" id="canvasPanel">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div class="sidebar" id="sidebar">
+    <div>
+      <h3 data-i18n="rulesTitle">游戏规则</h3>
+      <ul class="rules-list" data-i18n-list="rules">
+        <li><span class="rule-num">1</span><span data-i18n="rule1">活细胞周围活邻居少于 2 个 → 因孤立而死亡</span></li>
+        <li><span class="rule-num">2</span><span data-i18n="rule2">活细胞周围有 2 或 3 个活邻居 → 存活到下一代</span></li>
+        <li><span class="rule-num">3</span><span data-i18n="rule3">活细胞周围活邻居多于 3 个 → 因拥挤而死亡</span></li>
+        <li><span class="rule-num">4</span><span data-i18n="rule4">死细胞周围恰好有 3 个活邻居 → 重新复活</span></li>
+      </ul>
+    </div>
+    <div>
+      <h3 data-i18n="legendTitle">图例</h3>
+      <div class="legend">
+        <div class="legend-item"><span class="legend-dot alive"></span><span data-i18n="legendAlive">活细胞</span></div>
+        <div class="legend-item"><span class="legend-dot dead"></span><span data-i18n="legendDead">死细胞</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="controls-bar">
+  <button class="btn primary" id="btnPlay" data-i18n="start">开始</button>
+  <button class="btn" id="btnStep" data-i18n="step">下一步</button>
+  <button class="btn" id="btnRandom" data-i18n="random">随机</button>
+  <button class="btn danger" id="btnClear" data-i18n="clear">清空</button>
+
+  <div class="speed-group">
+    <label data-i18n="speed">速度</label>
+    <input type="range" id="speedSlider" min="1" max="20" value="10">
+  </div>
+
+  <div class="stats">
+    <span data-i18n="generation">代数</span>: <strong id="genCount">0</strong>
+    <span data-i18n="cells">活细胞</span>: <strong id="cellCount">0</strong>
+  </div>
+</div>
+
+<div class="footer">
+  Created by <strong>BW</strong>
+  <span class="divider">|</span>
+  Conway's Game of Life &copy; 1970
+</div>
+
+<script>
+// ============================================================
+//  Conway's Game of Life — 康威生命游戏
+//  Created by BW
+// ============================================================
+
+const i18n = {
+  zh: {
+    title: "Conway's Game of Life",
+    subtitle: '康威生命游戏',
+    langLabel: '中文',
+    rulesTitle: '游戏规则',
+    rule1: '活细胞周围活邻居少于 2 个 → 因孤立而死亡',
+    rule2: '活细胞周围有 2 或 3 个活邻居 → 存活到下一代',
+    rule3: '活细胞周围活邻居多于 3 个 → 因拥挤而死亡',
+    rule4: '死细胞周围恰好有 3 个活邻居 → 重新复活',
+    legendTitle: '图例',
+    legendAlive: '活细胞',
+    legendDead: '死细胞',
+    start: '开始',
+    pause: '暂停',
+    step: '下一步',
+    random: '随机',
+    clear: '清空',
+    speed: '速度',
+    generation: '代数',
+    cells: '活细胞',
+  },
+  en: {
+    title: "Conway's Game of Life",
+    subtitle: "Conway's Game of Life",
+    langLabel: 'EN',
+    rulesTitle: 'Rules',
+    rule1: 'Any live cell with < 2 live neighbors dies (underpopulation)',
+    rule2: 'Any live cell with 2 or 3 live neighbors lives on',
+    rule3: 'Any live cell with > 3 live neighbors dies (overpopulation)',
+    rule4: 'Any dead cell with exactly 3 live neighbors becomes alive (reproduction)',
+    legendTitle: 'Legend',
+    legendAlive: 'Alive cell',
+    legendDead: 'Dead cell',
+    start: 'Start',
+    pause: 'Pause',
+    step: 'Step',
+    random: 'Random',
+    clear: 'Clear',
+    speed: 'Speed',
+    generation: 'Generation',
+    cells: 'Alive cells',
+  },
+};
+
+let lang = 'zh';
+
+function t(key) {
+  return i18n[lang][key] || key;
+}
+
+function updateI18n() {
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (key === 'langLabel') {
+      el.textContent = lang === 'zh' ? 'English' : '中文';
+    } else {
+      el.textContent = t(key);
+    }
+  });
+  const btnPlay = document.getElementById('btnPlay');
+  if (!running) {
+    btnPlay.textContent = t('start');
+    btnPlay.classList.remove('paused');
+  } else {
+    btnPlay.textContent = t('pause');
+    btnPlay.classList.add('paused');
+  }
+}
+
+// ── GRID ──
+const COLS = 80;
+const ROWS = 60;
+let grid = new Array(ROWS).fill(null).map(() => new Array(COLS).fill(0));
+let nextGrid = new Array(ROWS).fill(null).map(() => new Array(COLS).fill(0));
+let running = false;
+let generation = 0;
+let speedMs = 100;
+let animFrameId = null;
+let lastStepTime = 0;
+let cellSize = 10;
+
+// ── CANVAS SETUP ──
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const canvasPanel = document.getElementById('canvasPanel');
+
+function resizeCanvas() {
+  const rect = canvasPanel.getBoundingClientRect();
+  const w = rect.width;
+  const h = rect.height;
+  cellSize = Math.min(Math.floor(w / COLS), Math.floor(h / ROWS));
+  if (cellSize < 4) cellSize = 4;
+  canvas.width = cellSize * COLS;
+  canvas.height = cellSize * ROWS;
+  draw();
+}
+
+// ── DRAWING ──
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // dead cells background
+  ctx.fillStyle = '#151520';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // grid lines
+  if (cellSize >= 6) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 0.5;
+    for (let x = 0; x <= COLS; x++) {
+      ctx.beginPath();
+      ctx.moveTo(x * cellSize, 0);
+      ctx.lineTo(x * cellSize, canvas.height);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= ROWS; y++) {
+      ctx.beginPath();
+      ctx.moveTo(0, y * cellSize);
+      ctx.lineTo(canvas.width, y * cellSize);
+      ctx.stroke();
+    }
+  }
+  // alive cells
+  ctx.fillStyle = '#4ade80';
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c]) {
+        ctx.fillRect(c * cellSize + 1, r * cellSize + 1, cellSize - 2, cellSize - 2);
+      }
+    }
+  }
+}
+
+// ── GAME LOGIC ──
+function countNeighbors(r, c) {
+  let count = 0;
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      if (dr === 0 && dc === 0) continue;
+      const nr = r + dr;
+      const nc = c + dc;
+      if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+        count += grid[nr][nc];
+      }
+    }
+  }
+  return count;
+}
+
+function stepGeneration() {
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const neighbors = countNeighbors(r, c);
+      if (grid[r][c]) {
+        nextGrid[r][c] = (neighbors === 2 || neighbors === 3) ? 1 : 0;
+      } else {
+        nextGrid[r][c] = (neighbors === 3) ? 1 : 0;
+      }
+    }
+  }
+  [grid, nextGrid] = [nextGrid, grid];
+  generation++;
+  updateStats();
+}
+
+function updateStats() {
+  let count = 0;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      count += grid[r][c];
+    }
+  }
+  document.getElementById('genCount').textContent = generation;
+  document.getElementById('cellCount').textContent = count;
+}
+
+// ── ANIMATION LOOP ──
+function loop(timestamp) {
+  if (!running) return;
+  animFrameId = requestAnimationFrame(loop);
+  if (timestamp - lastStepTime >= speedMs) {
+    stepGeneration();
+    draw();
+    lastStepTime = timestamp;
+  }
+}
+
+function start() {
+  if (running) return;
+  running = true;
+  lastStepTime = performance.now();
+  animFrameId = requestAnimationFrame(loop);
+  const btn = document.getElementById('btnPlay');
+  btn.textContent = t('pause');
+  btn.classList.add('paused');
+}
+
+function pause() {
+  running = false;
+  if (animFrameId) cancelAnimationFrame(animFrameId);
+  animFrameId = null;
+  const btn = document.getElementById('btnPlay');
+  btn.textContent = t('start');
+  btn.classList.remove('paused');
+}
+
+function togglePlay() {
+  running ? pause() : start();
+}
+
+// ── MOUSE DRAWING ──
+let mouseDown = false;
+let drawMode = null; // 'draw' | 'erase'
+
+function canvasToGrid(e) {
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const c = Math.floor(x / cellSize);
+  const r = Math.floor(y / cellSize);
+  return { r, c };
+}
+
+function handleCanvasMouseDown(e) {
+  if (e.button === 0) {
+    mouseDown = true;
+    const { r, c } = canvasToGrid(e);
+    if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+      drawMode = grid[r][c] ? 'erase' : 'draw';
+      grid[r][c] = drawMode === 'draw' ? 1 : 0;
+      draw();
+      updateStats();
+    }
+  }
+}
+
+function handleCanvasMouseMove(e) {
+  if (!mouseDown) return;
+  const { r, c } = canvasToGrid(e);
+  if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+    grid[r][c] = drawMode === 'draw' ? 1 : 0;
+    draw();
+    updateStats();
+  }
+}
+
+function handleCanvasMouseUp() { mouseDown = false; }
+function handleCanvasMouseLeave() { mouseDown = false; }
+
+canvas.addEventListener('mousedown', handleCanvasMouseDown);
+canvas.addEventListener('mousemove', handleCanvasMouseMove);
+window.addEventListener('mouseup', handleCanvasMouseUp);
+canvas.addEventListener('mouseleave', handleCanvasMouseLeave);
+
+// Touch support
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  mouseDown = true;
+  const { r, c } = canvasToGrid(touch);
+  if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+    drawMode = grid[r][c] ? 'erase' : 'draw';
+    grid[r][c] = drawMode === 'draw' ? 1 : 0;
+    draw();
+    updateStats();
+  }
+});
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!mouseDown) return;
+  const touch = e.touches[0];
+  const { r, c } = canvasToGrid(touch);
+  if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+    grid[r][c] = drawMode === 'draw' ? 1 : 0;
+    draw();
+    updateStats();
+  }
+});
+canvas.addEventListener('touchend', () => { mouseDown = false; });
+
+// ── CONTROLS ──
+document.getElementById('btnPlay').addEventListener('click', togglePlay);
+document.getElementById('btnStep').addEventListener('click', () => {
+  if (running) pause();
+  stepGeneration();
+  draw();
+});
+document.getElementById('btnRandom').addEventListener('click', () => {
+  if (running) pause();
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      grid[r][c] = Math.random() > 0.7 ? 1 : 0;
+    }
+  }
+  generation = 0;
+  draw();
+  updateStats();
+});
+document.getElementById('btnClear').addEventListener('click', () => {
+  if (running) pause();
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      grid[r][c] = 0;
+    }
+  }
+  generation = 0;
+  draw();
+  updateStats();
+});
+document.getElementById('speedSlider').addEventListener('input', e => {
+  speedMs = 1050 - (e.target.value * 50);
+});
+
+document.getElementById('langToggle').addEventListener('click', () => {
+  lang = lang === 'zh' ? 'en' : 'zh';
+  updateI18n();
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  switch (e.code) {
+    case 'Space': e.preventDefault(); togglePlay(); break;
+    case 'KeyS': e.preventDefault(); if (!running) { stepGeneration(); draw(); } break;
+    case 'KeyR': e.preventDefault(); document.getElementById('btnRandom').click(); break;
+    case 'KeyC': e.preventDefault(); document.getElementById('btnClear').click(); break;
+  }
+});
+
+// ── INIT ──
+function init() {
+  resizeCanvas();
+  // Generate initial random pattern
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      grid[r][c] = Math.random() > 0.7 ? 1 : 0;
+    }
+  }
+  draw();
+  updateStats();
+  updateI18n();
+
+  // Add some well-known patterns for visual interest
+  addGlider(5, 5);
+  addGlider(30, 20);
+  addGlider(50, 40);
+  addBlinker(20, 10);
+  addBlinker(40, 30);
+  draw();
+  updateStats();
+}
+
+function addGlider(r, c) {
+  const pattern = [[0,1,0],[0,0,1],[1,1,1]];
+  for (let dr = 0; dr < 3; dr++)
+    for (let dc = 0; dc < 3; dc++)
+      if (r+dr < ROWS && c+dc < COLS) grid[r+dr][c+dc] = pattern[dr][dc];
+}
+
+function addBlinker(r, c) {
+  for (let dc = 0; dc < 3; dc++)
+    if (c+dc < COLS) grid[r][c+dc] = 1;
+}
+
+window.addEventListener('resize', resizeCanvas);
+window.addEventListener('load', init);
+</script>
+</body>
+</html>

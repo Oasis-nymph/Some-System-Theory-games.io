@@ -1,0 +1,1123 @@
+<!--
+  SFI Double Auction Tournament — Visualization Dashboard
+  Rust · Miller · Palmer (1992-1994)
+  Single-file HTML + CSS + JS, Chart.js from CDN
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SFI Double Auction — Rust · Miller · Palmer</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0d1117; color: #c9d1d9;
+  min-height: 100vh; overflow-x: hidden;
+}
+a { color: #58a6ff; text-decoration: none; }
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+.header {
+  background: #161b22; border-bottom: 1px solid #30363d;
+  padding: 12px 24px; display: flex; align-items: baseline; gap: 16px;
+}
+.header h1 { font-size: 1.25rem; color: #f0f6fc; letter-spacing: -0.02em; }
+.header .subtitle { font-size: 0.8rem; color: #8b949e; }
+
+/* ============================================================
+   TOOLBAR
+   ============================================================ */
+.toolbar {
+  background: #161b22; border-bottom: 1px solid #30363d;
+  padding: 8px 24px; display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap;
+}
+.toolbar button {
+  background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+  padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.8rem;
+  transition: background 0.15s;
+}
+.toolbar button:hover:not(:disabled) { background: #30363d; }
+.toolbar button:disabled { opacity: 0.4; cursor: default; }
+.toolbar button.primary { background: #238636; border-color: #2ea043; color: #fff; }
+.toolbar button.primary:hover:not(:disabled) { background: #2ea043; }
+.toolbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.toolbar label { font-size: 0.8rem; color: #8b949e; display: flex; align-items: center; gap: 6px; }
+.toolbar input[type="range"] { width: 100px; }
+
+/* ============================================================
+   CONFIG PANEL
+   ============================================================ */
+.config-panel {
+  background: #161b22; border-bottom: 1px solid #30363d;
+  padding: 8px 24px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+}
+.config-panel label { font-size: 0.75rem; color: #8b949e; display: flex; align-items: center; gap: 4px; }
+.config-panel input[type="number"] {
+  width: 48px; padding: 3px 6px; background: #0d1117; color: #c9d1d9;
+  border: 1px solid #30363d; border-radius: 4px; font-size: 0.75rem; text-align: center;
+}
+.config-panel .warn { color: #f85149; font-size: 0.75rem; }
+
+/* ============================================================
+   DASHBOARD GRID
+   ============================================================ */
+.dashboard {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 1px;
+  background: #30363d;
+  min-height: calc(100vh - 140px);
+}
+@media (max-width: 900px) { .dashboard { grid-template-columns: 1fr; } }
+
+.panel {
+  background: #0d1117; padding: 16px; overflow: auto;
+}
+.panel h2 {
+  font-size: 0.85rem; color: #8b949e; text-transform: uppercase;
+  letter-spacing: 0.05em; margin-bottom: 12px; display: flex;
+  align-items: center; justify-content: space-between;
+}
+.panel h2 .badge {
+  font-size: 0.7rem; padding: 2px 8px; border-radius: 10px;
+  background: #21262d; color: #c9d1d9; text-transform: none; letter-spacing: 0;
+}
+
+/* ----- Panel 1: Order Book ----- */
+#panel-orderbook { grid-row: 1 / 3; }
+.orderbook-viz { position: relative; min-height: 300px; }
+.bid-bar, .ask-bar {
+  display: flex; align-items: center; height: 28px; margin: 2px 0;
+  border-radius: 4px; font-size: 0.7rem; padding: 0 6px; transition: width 0.3s;
+}
+.bid-bar { background: linear-gradient(90deg, #238636, #1a5c2a); justify-content: flex-end; text-align: right; }
+.ask-bar { background: linear-gradient(90deg, #da3633, #8b2a2a); }
+.spread-indicator {
+  text-align: center; padding: 6px 0; font-size: 0.75rem; color: #d2991d;
+  border-top: 1px dashed #30363d; border-bottom: 1px dashed #30363d; margin: 8px 0;
+}
+.eq-marker {
+  font-size: 0.75rem; color: #58a6ff; padding: 6px 0;
+  border-top: 1px dashed #1f6feb;
+}
+.no-orders { font-size: 0.8rem; color: #484f58; text-align: center; padding: 20px; }
+
+/* ----- Panel 2: Chart ----- */
+#price-chart-container { position: relative; height: 320px; }
+#price-chart { width: 100% !important; height: 100% !important; }
+
+/* ----- Panel 3: Metrics ----- */
+#panel-metrics { grid-column: 2; }
+.metrics-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
+.metric-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 10px; text-align: center;
+}
+.metric-label { display: block; font-size: 0.65rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.04em; }
+.metric-value { display: block; font-size: 1.1rem; font-weight: 600; margin: 4px 0; color: #f0f6fc; }
+.metric-bar {
+  height: 4px; background: #21262d; border-radius: 2px; margin-top: 4px; overflow: hidden;
+}
+.metric-fill { height: 100%; background: #238636; border-radius: 2px; transition: width 0.4s; }
+#efficiency-chart-container { height: 160px; }
+
+/* ----- Panel 4: Trader Grid ----- */
+#panel-traders { grid-column: 2; }
+.trader-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.trader-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 10px; font-size: 0.75rem; position: relative; overflow: hidden;
+}
+.trader-card::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+}
+.trader-card.buyer::before { background: #58a6ff; }
+.trader-card.seller::before { background: #d2991d; }
+.trader-card.inactive { opacity: 0.5; }
+.trader-card .tc-id { font-weight: 600; color: #f0f6fc; }
+.trader-card .tc-strategy {
+  font-size: 0.65rem; color: #8b949e; text-transform: uppercase;
+  letter-spacing: 0.04em; margin: 2px 0;
+}
+.trader-card .tc-value { color: #c9d1d9; margin: 4px 0; }
+.trader-card .tc-profit { color: #3fb950; font-weight: 600; }
+.trader-card .tc-profit.neg { color: #f85149; }
+.trader-card .tc-status {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 4px; vertical-align: middle;
+}
+.tc-status.active { background: #3fb950; }
+.tc-status.done { background: #484f58; }
+
+/* ============================================================
+   EXPLANATION OVERLAY
+   ============================================================ */
+.explanation-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000;
+  display: none; align-items: center; justify-content: center;
+}
+.explanation-overlay.show { display: flex; }
+.explanation-content {
+  background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+  padding: 32px; max-width: 720px; max-height: 80vh; overflow-y: auto;
+  position: relative;
+}
+.explanation-content h1 { font-size: 1.5rem; color: #f0f6fc; margin-bottom: 20px; }
+.explanation-content h3 { font-size: 1rem; color: #58a6ff; margin: 16px 0 6px; }
+.explanation-content p { font-size: 0.85rem; line-height: 1.6; color: #c9d1d9; margin-bottom: 8px; }
+.close-btn {
+  position: absolute; top: 12px; right: 16px;
+  background: none; border: none; color: #8b949e; font-size: 1.2rem; cursor: pointer;
+}
+.close-btn:hover { color: #f0f6fc; }
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+.toast {
+  position: fixed; top: 16px; right: 16px; z-index: 2000;
+  background: #f85149; color: #fff; padding: 10px 20px;
+  border-radius: 6px; font-size: 0.8rem; display: none;
+}
+.toast.show { display: block; }
+</style>
+</head>
+<body>
+
+<!-- ============ HEADER ============ -->
+<header class="header">
+  <h1>SFI Double Auction Tournament</h1>
+  <span class="subtitle">Synchronized Double Auction — Rust · Miller · Palmer (1992-1994)</span>
+</header>
+
+<!-- ============ TOOLBAR ============ -->
+<nav class="toolbar">
+  <button id="btn-init" class="primary" onclick="initSimulation()">Init</button>
+  <button id="btn-step" onclick="stepSimulation()" disabled>Step</button>
+  <button id="btn-run-period" onclick="runPeriod()" disabled>Run Period</button>
+  <button id="btn-run-all" onclick="runAll()" disabled>Run All</button>
+  <button id="btn-reset" onclick="resetSimulation()">Reset</button>
+  <div class="toolbar-right">
+    <label>Speed: <input type="range" id="speed-slider" min="100" max="2000" value="400" step="100"></label>
+    <button id="btn-auto" onclick="toggleAuto()">Auto</button>
+    <button id="btn-mode" onclick="toggleExplanation()">Explanation</button>
+  </div>
+</nav>
+
+<!-- ============ STRATEGY MIX CONFIG ============ -->
+<section class="config-panel">
+  <label>Fundamental <input type="number" id="cfg-fundamental" value="2" min="0" max="6"></label>
+  <label>Bayesian <input type="number" id="cfg-bayesian" value="1" min="0" max="6"></label>
+  <label>ProfitMax <input type="number" id="cfg-profitmax" value="1" min="0" max="6"></label>
+  <label>Kaplan <input type="number" id="cfg-kaplan" value="1" min="0" max="6"></label>
+  <label>ZI-C <input type="number" id="cfg-zic" value="1" min="0" max="6"></label>
+  <span id="trader-count-warn" class="warn"></span>
+</section>
+
+<!-- ============ MAIN DASHBOARD ============ -->
+<main class="dashboard">
+
+  <!-- PANEL 1: Order Book -->
+  <section class="panel" id="panel-orderbook">
+    <h2>Order Book <span class="badge" id="spread-display">Spread: —</span></h2>
+    <div class="orderbook-viz" id="orderbook-content">
+      <p class="no-orders">Click Init to start</p>
+    </div>
+    <div class="eq-marker">
+      Equilibrium Price: <strong id="eq-price-value">—</strong>
+      &nbsp;|&nbsp; Qty: <strong id="eq-qty-value">—</strong>
+    </div>
+  </section>
+
+  <!-- PANEL 2: Price Trajectory Chart -->
+  <section class="panel">
+    <h2>Price Trajectory</h2>
+    <div id="price-chart-container"><canvas id="price-chart"></canvas></div>
+  </section>
+
+  <!-- PANEL 3: Efficiency Metrics -->
+  <section class="panel" id="panel-metrics">
+    <h2>Efficiency Metrics</h2>
+    <div class="metrics-row">
+      <div class="metric-card">
+        <span class="metric-label">Allocative Efficiency</span>
+        <span class="metric-value" id="metric-efficiency">—</span>
+        <div class="metric-bar"><div class="metric-fill" id="metric-efficiency-bar" style="width:0%"></div></div>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Consumer Surplus</span>
+        <span class="metric-value" id="metric-consumer">—</span>
+        <span class="metric-label" style="font-size:0.6rem">Max: <span id="metric-max-surplus">—</span></span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Producer Surplus</span>
+        <span class="metric-value" id="metric-producer">—</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Total Surplus</span>
+        <span class="metric-value" id="metric-total">—</span>
+      </div>
+    </div>
+    <div id="efficiency-chart-container"><canvas id="efficiency-chart"></canvas></div>
+  </section>
+
+  <!-- PANEL 4: Trader Dashboard -->
+  <section class="panel" id="panel-traders">
+    <h2>Traders <span style="font-size:0.7rem;color:#8b949e" id="trader-phase-label">Idle</span></h2>
+    <div class="trader-grid" id="trader-grid">
+      <p class="no-orders">Click Init to populate traders</p>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ EXPLANATION OVERLAY ============ -->
+<section class="explanation-overlay" id="explanation-overlay">
+  <div class="explanation-content">
+    <button class="close-btn" onclick="toggleExplanation()">&times;</button>
+    <h1>The SFI Double Auction — Rust, Miller & Palmer</h1>
+
+    <h3>What is a Synchronized Double Auction?</h3>
+    <p>In a <strong>continuous double auction (CDA)</strong>, buyers and sellers submit bids and asks in real time, and a trade executes whenever a bid crosses an ask. The SFI tournament used a <strong>synchronized</strong> variant: each round alternates between a <em>Bid Step</em> (all buyers submit sealed bids simultaneously) and an <em>Ask Step</em> (all sellers submit sealed asks, <em>after seeing the current bids</em>). This gives sellers a slight information advantage, mirroring real-world market microstructure.</p>
+
+    <h3>The Tournament (1990-1991)</h3>
+    <p>John Rust, John H. Miller, and Richard G. Palmer organized a competition at the Santa Fe Institute where 30 computer trading programs — ranging from simple heuristics to sophisticated AI — competed as buyers and sellers. Each trader knew only its own <strong>private value</strong> (buyer's redemption value or seller's unit cost). The key finding: <strong>simple strategies consistently matched or outperformed complex ones</strong>, and the double auction institution itself drove ~95-100% allocative efficiency.</p>
+
+    <h3>Why the Double Auction Works</h3>
+    <p>The double auction is remarkably efficient because its institutional rules — not trader intelligence — enforce competitive discipline. Even <em>zero-intelligence</em> traders constrained only by a budget constraint (ZI-C, Gode & Sunder 1993) achieve near-perfect efficiency. The bid-then-ask sequence, combined with competition among traders on each side, drives transaction prices toward the competitive equilibrium where supply meets demand.</p>
+
+    <h3>Strategies in this Simulation</h3>
+    <p><strong>Fundamental</strong> — Estimates equilibrium price P* from recent transactions and bids with a margin around that estimate.</p>
+    <p><strong>Bayesian</strong> — Maintains a normal-distribution belief over P*, updated each round via Kalman-like Bayesian updating from observed prices.</p>
+    <p><strong>ProfitMax</strong> — Models the distribution of competing bids/asks and numerically searches for the bid/ask that maximizes expected profit.</p>
+    <p><strong>Kaplan Sniper</strong> — The tournament-winning strategy. Waits passively until the bid-ask spread narrows below ~15%, then steals the deal with a slightly better price.</p>
+    <p><strong>ZI-C</strong> — Zero-Intelligence Constrained. Submits random bids/asks within budget (never loses money). No learning, no strategy, no memory.</p>
+
+    <h3>Key Results</h3>
+    <p>1. <strong>Near-100% efficiency</strong> emerges even with decentralized, incomplete information.</p>
+    <p>2. <strong>Simplicity beats complexity</strong>: the Kaplan sniper (a ~20-line heuristic) outperformed Bayesian learners, genetic algorithms, and explicit optimizers.</p>
+    <p>3. <strong>Institution over intelligence</strong>: the double auction rules themselves — not trader sophistication — are the primary driver of market efficiency.</p>
+
+  </div>
+</section>
+
+<!-- ============ TOAST ============ -->
+<div class="toast" id="toast"></div>
+
+<!-- ============================================================
+     JAVASCRIPT — Full auction engine + UI (no backend required)
+     ============================================================ -->
+<script>
+// ======================================================================
+// Seeded PRNG (mulberry32)
+// ======================================================================
+function SeededRandom(seed) {
+  let s = seed | 0;
+  this.next = function() {
+    s |= 0; s = s + 0x6D2B79F5 | 0;
+    let t = Math.imul(s ^ s >>> 15, 1 | s);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+  this.uniform = function(lo, hi) { return lo + this.next() * (hi - lo); };
+  this.shuffle = function(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(this.next() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  };
+}
+
+// ======================================================================
+// Market: value generation + equilibrium
+// ======================================================================
+function generateTraderValues(nBuyers, nSellers, valueRange, rng) {
+  const vmin = valueRange[0], vmax = valueRange[1];
+  const mid = (vmin + vmax) / 2;
+  const bv = [], sc = [];
+  for (let i = 0; i < nBuyers; i++) bv.push(+(rng.uniform(mid * 0.8, vmax)).toFixed(2));
+  for (let i = 0; i < nSellers; i++) sc.push(+(rng.uniform(vmin, mid * 1.2)).toFixed(2));
+  return { buyerValues: bv, sellerCosts: sc };
+}
+
+function assignStrategies(nBuyers, nSellers, strategyMix, rng) {
+  const names = ['fundamental', 'bayesian', 'profitmax', 'kaplan', 'zic'];
+  let pool = [];
+  for (const n of names) {
+    const cnt = strategyMix[n] || 0;
+    for (let i = 0; i < cnt; i++) pool.push(n);
+  }
+  const needed = nBuyers + nSellers;
+  while (pool.length < needed) pool.push('zic');
+  rng.shuffle(pool);
+  return { buyerStrats: pool.slice(0, nBuyers), sellerStrats: pool.slice(nBuyers, nBuyers + nSellers) };
+}
+
+function computeEquilibrium(buyerValues, sellerCosts) {
+  const bv = [...buyerValues].sort((a, b) => b - a);
+  const sc = [...sellerCosts].sort((a, b) => a - b);
+  const allPts = [...new Set([...bv, ...sc])].sort((a, b) => a - b);
+
+  let eqPrice = null, eqQty = 0, maxSurplus = 0;
+
+  for (let i = 0; i < allPts.length - 1; i++) {
+    const p = (allPts[i] + allPts[i + 1]) / 2;
+    const demand = bv.filter(v => v >= p).length;
+    const supply = sc.filter(c => c <= p).length;
+    const q = Math.min(demand, supply);
+    if (q > eqQty) { eqQty = q; eqPrice = p; }
+    else if (q === eqQty && eqPrice === null) eqPrice = p;
+  }
+  if (eqPrice === null && allPts.length) {
+    eqPrice = allPts[Math.floor(allPts.length / 2)];
+    eqQty = Math.min(bv.filter(v => v >= eqPrice).length, sc.filter(c => c <= eqPrice).length);
+  }
+  for (let i = 0; i < eqQty; i++) {
+    if (i < bv.length && i < sc.length) {
+      const s = bv[i] - sc[i];
+      if (s > 0) maxSurplus += s;
+    }
+  }
+  return { price: eqPrice, quantity: eqQty, maxTotalSurplus: +maxSurplus.toFixed(2) };
+}
+
+// ======================================================================
+// Normal CDF approximation
+// ======================================================================
+function normCdf(x) {
+  return 0.5 * (1 + erf(x / Math.sqrt(2)));
+}
+function erf(x) {
+  const sign = x >= 0 ? 1 : -1;
+  x = Math.abs(x);
+  const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741;
+  const a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+  const t = 1 / (1 + p * x);
+  const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+  return sign * y;
+}
+
+// ======================================================================
+// Strategy classes
+// ======================================================================
+
+class MarketSnapshot {
+  constructor() {
+    this.currentSpread = null;
+    this.bestBid = null;
+    this.bestAsk = null;
+    this.transactionPrices = [];
+    this.currentPeriodPrices = [];
+    this.roundNum = 1;
+    this.activeBuyerCount = 0;
+    this.activeSellerCount = 0;
+  }
+}
+
+class FundamentalStrategy {
+  constructor(margin = 0.05) { this.margin = margin; }
+  _estimateEq(snap) {
+    if (snap.transactionPrices.length >= 3) {
+      const recent = snap.transactionPrices.slice(-5).sort((a, b) => a - b);
+      const trimmed = recent.length >= 4 ? recent.slice(1, -1) : recent;
+      return trimmed.reduce((a, b) => a + b, 0) / trimmed.length;
+    }
+    if (snap.bestBid != null && snap.bestAsk != null) return (snap.bestBid + snap.bestAsk) / 2;
+    return 100;
+  }
+  computeBid(trader, snap) {
+    if (!trader.isActive) return null;
+    const pHat = this._estimateEq(snap);
+    if (pHat >= trader.privateValue) return null;
+    return +Math.max(0.01, Math.min(pHat * (1 + this.margin), trader.privateValue * 0.98)).toFixed(2);
+  }
+  computeAsk(trader, snap, currentBids) {
+    if (!trader.isActive) return null;
+    let pHat = this._estimateEq(snap);
+    if (currentBids && currentBids.length) {
+      const avg = currentBids.reduce((a, o) => a + o.price, 0) / currentBids.length;
+      pHat = 0.7 * pHat + 0.3 * avg;
+    }
+    if (pHat <= trader.privateValue) return null;
+    return +Math.max(trader.privateValue * 1.02, pHat * (1 - this.margin)).toFixed(2);
+  }
+}
+
+class BayesianStrategy {
+  constructor(priorMu = 100, priorSigma = 40) {
+    this.mu = priorMu; this.sigma = priorSigma; this.obsNoise = 15;
+  }
+  _update(obs) {
+    const ov = this.obsNoise ** 2, pv = this.sigma ** 2;
+    const postVar = 1 / (1 / pv + 1 / ov);
+    this.mu = postVar * (this.mu / pv + obs / ov);
+    this.sigma = Math.sqrt(postVar);
+  }
+  computeBid(trader, snap) {
+    if (!trader.isActive) return null;
+    if (snap.currentPeriodPrices.length) this._update(snap.currentPeriodPrices[snap.currentPeriodPrices.length - 1]);
+    if (this.mu >= trader.privateValue) return null;
+    return +Math.max(0.01, Math.min(trader.privateValue * 0.98, this.mu + 0.5 * this.sigma)).toFixed(2);
+  }
+  computeAsk(trader, snap, currentBids) {
+    if (!trader.isActive) return null;
+    if (currentBids && currentBids.length) {
+      const avg = currentBids.reduce((a, o) => a + o.price, 0) / currentBids.length;
+      this._update(avg);
+    }
+    if (this.mu <= trader.privateValue) return null;
+    return +Math.max(trader.privateValue * 1.02, this.mu - 0.5 * this.sigma).toFixed(2);
+  }
+}
+
+class ProfitMaxStrategy {
+  constructor(nCandidates = 20) {
+    this.nCandidates = nCandidates;
+    this.askMu = 100; this.askSigma = 30;
+    this.bidMu = 100; this.bidSigma = 30;
+  }
+  _pTradeBuyer(bid) {
+    if (this.askSigma <= 0) return bid >= this.askMu ? 1 : 0;
+    return normCdf((bid - this.askMu) / this.askSigma);
+  }
+  _pTradeSeller(ask) {
+    if (this.bidSigma <= 0) return ask <= this.bidMu ? 1 : 0;
+    return normCdf((this.bidMu - ask) / this.bidSigma);
+  }
+  computeBid(trader, snap) {
+    if (!trader.isActive) return null;
+    if (snap.bestAsk != null) { this.askMu = snap.bestAsk; this.askSigma = 15; }
+    let bestBid = null, bestEU = 0;
+    const lo = trader.privateValue * 0.1, hi = trader.privateValue * 0.99;
+    const step = (hi - lo) / this.nCandidates;
+    for (let b = lo; b <= hi; b += step) {
+      const eu = (trader.privateValue - b) * this._pTradeBuyer(b);
+      if (eu > bestEU) { bestEU = eu; bestBid = b; }
+    }
+    return bestBid != null ? +bestBid.toFixed(2) : null;
+  }
+  computeAsk(trader, snap, currentBids) {
+    if (!trader.isActive) return null;
+    if (currentBids && currentBids.length) {
+      this.bidMu = currentBids.reduce((a, o) => a + o.price, 0) / currentBids.length;
+      this.bidSigma = 15;
+    } else if (snap.bestBid != null) { this.bidMu = snap.bestBid; this.bidSigma = 15; }
+    let bestAsk = null, bestEU = 0;
+    const lo = trader.privateValue * 1.01, hi = trader.privateValue * 2;
+    const step = (hi - lo) / this.nCandidates;
+    for (let a = lo; a <= hi; a += step) {
+      const eu = (a - trader.privateValue) * this._pTradeSeller(a);
+      if (eu > bestEU) { bestEU = eu; bestAsk = a; }
+    }
+    return bestAsk != null ? +bestAsk.toFixed(2) : null;
+  }
+}
+
+class KaplanStrategy {
+  constructor(spreadThresh = 0.15, maxWait = 8) {
+    this.spreadThresh = spreadThresh; this.maxWait = maxWait; this.patience = 0;
+  }
+  reset() { this.patience = 0; }
+  computeBid(trader, snap) {
+    if (!trader.isActive) return null;
+    if (snap.bestBid == null || snap.bestAsk == null) { this.patience++; return +trader.privateValue.toFixed(2) * 0.4; }
+    const spreadPct = snap.bestAsk > 0 ? (snap.bestAsk - snap.bestBid) / snap.bestAsk : 1;
+    if (spreadPct < this.spreadThresh) return +(Math.min(snap.bestBid * 1.01, trader.privateValue * 0.99)).toFixed(2);
+    this.patience++;
+    if (this.patience > this.maxWait) return +(Math.min((snap.bestBid + snap.bestAsk) / 2, trader.privateValue * 0.95)).toFixed(2);
+    return null;
+  }
+  computeAsk(trader, snap, currentBids) {
+    if (!trader.isActive) return null;
+    if (!currentBids || !currentBids.length || snap.bestBid == null || snap.bestAsk == null) {
+      this.patience++; return +(trader.privateValue * 2).toFixed(2);
+    }
+    const spreadPct = snap.bestAsk > 0 ? (snap.bestAsk - snap.bestBid) / snap.bestAsk : 1;
+    if (spreadPct < this.spreadThresh) return +(Math.max(snap.bestAsk * 0.99, trader.privateValue * 1.01)).toFixed(2);
+    this.patience++;
+    if (this.patience > this.maxWait) return +(Math.max((snap.bestBid + snap.bestAsk) / 2, trader.privateValue * 1.05)).toFixed(2);
+    return null;
+  }
+}
+
+class ZICStrategy {
+  constructor(rng) { this.rng = rng; }
+  computeBid(trader, snap) {
+    if (!trader.isActive) return null;
+    return +(this.rng.uniform(0.01, trader.privateValue * 0.99)).toFixed(2);
+  }
+  computeAsk(trader, snap, currentBids) {
+    if (!trader.isActive) return null;
+    const upper = Math.max(trader.privateValue * 2.5, 200);
+    return +(this.rng.uniform(trader.privateValue * 1.01, upper)).toFixed(2);
+  }
+}
+
+function createStrategy(name, rng) {
+  switch (name) {
+    case 'fundamental': return new FundamentalStrategy();
+    case 'bayesian': return new BayesianStrategy();
+    case 'profitmax': return new ProfitMaxStrategy();
+    case 'kaplan': return new KaplanStrategy();
+    case 'zic': return new ZICStrategy(rng);
+    default: return new ZICStrategy(rng);
+  }
+}
+
+// ======================================================================
+// Auction Engine
+// ======================================================================
+class AuctionEngine {
+  constructor() {
+    this.config = {};
+    this.traders = []; this.buyers = []; this.sellers = [];
+    this.currentPeriod = 1; this.currentRound = 0;
+    this.phase = 'idle';
+    this.activeBuyerIds = []; this.activeSellerIds = [];
+    this.currentRoundBids = []; this.currentRoundAsks = [];
+    this.periodHistory = [];
+    this.allPeriods = [];
+    this.priceHistory = [];
+    this.equilibriumInfo = {};
+    this._rng = null;
+  }
+
+  init(configOverride = {}) {
+    const cfg = Object.assign({
+      numPeriods: 8, maxRoundsPerPeriod: 20, numBuyers: 6, numSellers: 6,
+      strategyMix: { fundamental: 2, bayesian: 1, profitmax: 1, kaplan: 1, zic: 1 },
+      tradePriceRule: 'midpoint', valueRange: [20, 200]
+    }, configOverride);
+    this.config = cfg;
+    const seed = cfg.randomSeed || Math.floor(Math.random() * 100000);
+    this._rng = new SeededRandom(seed);
+
+    const { buyerValues, sellerCosts } = generateTraderValues(cfg.numBuyers, cfg.numSellers, cfg.valueRange, this._rng);
+    const { buyerStrats, sellerStrats } = assignStrategies(cfg.numBuyers, cfg.numSellers, cfg.strategyMix, this._rng);
+
+    this.traders = []; this.buyers = []; this.sellers = [];
+    buyerValues.forEach((v, i) => {
+      const t = { id: 'B' + i, role: 'buyer', privateValue: v, strategyName: buyerStrats[i],
+        strategy: createStrategy(buyerStrats[i], this._rng), isActive: true, profit: 0, tradeCount: 0 };
+      this.traders.push(t); this.buyers.push(t);
+    });
+    sellerCosts.forEach((c, i) => {
+      const t = { id: 'S' + i, role: 'seller', privateValue: c, strategyName: sellerStrats[i],
+        strategy: createStrategy(sellerStrats[i], this._rng), isActive: true, profit: 0, tradeCount: 0 };
+      this.traders.push(t); this.sellers.push(t);
+    });
+
+    this.equilibriumInfo = computeEquilibrium(buyerValues, sellerCosts);
+    this._resetPeriod();
+    this.currentPeriod = 1;
+    this.allPeriods = [];
+    this.priceHistory = [];
+    this.phase = 'idle';
+  }
+
+  _resetPeriod() {
+    this.currentRound = 0;
+    this.periodHistory = [];
+    this.currentRoundBids = [];
+    this.currentRoundAsks = [];
+    this.traders.forEach(t => {
+      t.isActive = true;
+      if (t.strategy.reset) t.strategy.reset();
+    });
+    this.activeBuyerIds = this.buyers.filter(t => t.isActive).map(t => t.id);
+    this.activeSellerIds = this.sellers.filter(t => t.isActive).map(t => t.id);
+  }
+
+  _getTrader(id) { return this.traders.find(t => t.id === id); }
+
+  _snapshot() {
+    const snap = new MarketSnapshot();
+    snap.roundNum = this.currentRound;
+    snap.activeBuyerCount = this.activeBuyerIds.length;
+    snap.activeSellerCount = this.activeSellerIds.length;
+    if (this.periodHistory.length) {
+      const prev = this.periodHistory[this.periodHistory.length - 1];
+      snap.bestBid = prev.bestBid; snap.bestAsk = prev.bestAsk; snap.currentSpread = prev.spread;
+    }
+    snap.transactionPrices = this.priceHistory.map(e => e.price);
+    snap.currentPeriodPrices = this.priceHistory.filter(e => e.period === this.currentPeriod).map(e => e.price);
+    return snap;
+  }
+
+  _collectBids() {
+    const bids = [];
+    for (const tid of this.activeBuyerIds) {
+      const t = this._getTrader(tid); if (!t) continue;
+      const price = t.strategy.computeBid(t, this._snapshot());
+      if (price != null) bids.push({ traderId: tid, side: 'bid', price, roundNum: this.currentRound });
+    }
+    return bids;
+  }
+
+  _collectAsks() {
+    const asks = [];
+    for (const tid of this.activeSellerIds) {
+      const t = this._getTrader(tid); if (!t) continue;
+      const price = t.strategy.computeAsk(t, this._snapshot(), this.currentRoundBids);
+      if (price != null) asks.push({ traderId: tid, side: 'ask', price, roundNum: this.currentRound });
+    }
+    return asks;
+  }
+
+  _match() {
+    const bids = [...this.currentRoundBids].sort((a, b) => b.price - a.price);
+    const asks = [...this.currentRoundAsks].sort((a, b) => a.price - b.price);
+    const rule = this.config.tradePriceRule || 'midpoint';
+    const trades = [];
+    const usedB = new Set(), usedS = new Set();
+    for (const bid of bids) {
+      if (usedB.has(bid.traderId)) continue;
+      for (const ask of asks) {
+        if (usedS.has(ask.traderId)) continue;
+        if (bid.price >= ask.price) {
+          let tp;
+          if (rule === 'midpoint') tp = (bid.price + ask.price) / 2;
+          else if (rule === 'bid') tp = bid.price;
+          else tp = ask.price;
+          const buyer = this._getTrader(bid.traderId), seller = this._getTrader(ask.traderId);
+          trades.push({ buyerId: bid.traderId, sellerId: ask.traderId, price: +tp.toFixed(2),
+            roundNum: this.currentRound, buyerValue: buyer ? buyer.privateValue : 0,
+            sellerCost: seller ? seller.privateValue : 0 });
+          usedB.add(bid.traderId); usedS.add(ask.traderId);
+          break;
+        }
+      }
+    }
+    return trades;
+  }
+
+  step() {
+    if (this.phase === 'complete') return this.toDict();
+    if (this.phase === 'idle' || this.phase === 'periodDone') this._resetPeriod();
+
+    this.currentRound++;
+    this.phase = 'bidStep';
+    this.currentRoundBids = this._collectBids();
+    this.phase = 'askStep';
+    this.currentRoundAsks = this._collectAsks();
+
+    const trades = this._match();
+    for (const t of trades) {
+      const buyer = this._getTrader(t.buyerId), seller = this._getTrader(t.sellerId);
+      buyer.isActive = false; seller.isActive = false;
+      buyer.profit += buyer.privateValue - t.price;
+      seller.profit += t.price - seller.privateValue;
+      buyer.tradeCount++; seller.tradeCount++;
+      this.activeBuyerIds = this.activeBuyerIds.filter(id => id !== t.buyerId);
+      this.activeSellerIds = this.activeSellerIds.filter(id => id !== t.sellerId);
+      this.priceHistory.push({ period: this.currentPeriod, round: this.currentRound, price: t.price,
+        buyerValue: t.buyerValue, sellerCost: t.sellerCost });
+    }
+
+    const bestBid = this.currentRoundBids.length ? Math.max(...this.currentRoundBids.map(o => o.price)) : null;
+    const bestAsk = this.currentRoundAsks.length ? Math.min(...this.currentRoundAsks.map(o => o.price)) : null;
+    const spread = (bestBid != null && bestAsk != null) ? +(bestAsk - bestBid).toFixed(2) : null;
+
+    this.periodHistory.push({
+      roundNum: this.currentRound, bids: this.currentRoundBids, asks: this.currentRoundAsks,
+      trades, bestBid, bestAsk, spread
+    });
+
+    const stuck = trades.length === 0 && this.currentRound >= 5 && this.periodHistory.length >= 3 &&
+      this.periodHistory.slice(-3).every(r => r.trades.length === 0);
+    const noActive = !this.activeBuyerIds.length || !this.activeSellerIds.length ||
+      this.currentRound >= this.config.maxRoundsPerPeriod;
+
+	    if (noActive || stuck) {
+	      this._finalizePeriod();
+	    } else {
+	      this.phase = "clearing";
+	    }
+	    return this.toDict();
+	  }
+
+  runPeriod() {
+    if (this.phase === 'complete') return this.toDict();
+    if (this.phase === 'idle' || this.phase === 'periodDone') this._resetPeriod();
+    while (this.phase !== 'periodDone' && this.phase !== 'complete') this.step();
+    return this.toDict();
+  }
+
+  runAll() {
+    while (this.phase !== 'complete') this.step();
+    return this.toDict();
+  }
+
+  _finalizePeriod() {
+    let actualQty = 0, consumerSurplus = 0, producerSurplus = 0;
+    for (const r of this.periodHistory) {
+      actualQty += r.trades.length;
+      for (const t of r.trades) {
+        consumerSurplus += t.buyerValue - t.price;
+        producerSurplus += t.price - t.sellerCost;
+      }
+    }
+    const totalSurplus = consumerSurplus + producerSurplus;
+    const maxSurplus = this.equilibriumInfo.maxTotalSurplus || 1;
+    const allocEff = maxSurplus > 0 ? Math.min(totalSurplus / maxSurplus, 1) : 0;
+
+    this.allPeriods.push({
+      periodNum: this.currentPeriod, eqPrice: this.equilibriumInfo.price,
+      eqQuantity: this.equilibriumInfo.quantity, maxTotalSurplus: maxSurplus,
+      actualQuantity: actualQty, allocativeEfficiency: +allocEff.toFixed(4),
+      consumerSurplus: +consumerSurplus.toFixed(2), producerSurplus: +producerSurplus.toFixed(2),
+      totalSurplus: +totalSurplus.toFixed(2), roundCount: this.periodHistory.length
+    });
+
+    if (this.currentPeriod >= this.config.numPeriods) {
+      this.phase = 'complete';
+    } else {
+      this.currentPeriod++;
+      this.phase = 'periodDone';
+    }
+  }
+
+  toDict() {
+    const lastPeriod = this.allPeriods.length ? this.allPeriods[this.allPeriods.length - 1] : null;
+    return {
+      config: this.config,
+      initialized: true,
+      currentPeriod: this.currentPeriod, currentRound: this.currentRound, phase: this.phase,
+      traders: this.traders.map(t => ({
+        id: t.id, role: t.role, privateValue: t.privateValue, strategyName: t.strategyName,
+        isActive: t.isActive, profit: +t.profit.toFixed(2), tradeCount: t.tradeCount
+      })),
+      activeBuyerIds: this.activeBuyerIds, activeSellerIds: this.activeSellerIds,
+      currentRoundBids: this.currentRoundBids, currentRoundAsks: this.currentRoundAsks,
+      periodHistory: this.periodHistory,
+      allPeriods: this.allPeriods,
+      priceHistory: this.priceHistory,
+      equilibriumInfo: this.equilibriumInfo,
+      lastPeriodMetrics: lastPeriod ? {
+        periodNum: lastPeriod.periodNum, eqPrice: lastPeriod.eqPrice,
+        eqQuantity: lastPeriod.eqQuantity, actualQuantity: lastPeriod.actualQuantity,
+        allocativeEfficiency: lastPeriod.allocativeEfficiency,
+        consumerSurplus: lastPeriod.consumerSurplus, producerSurplus: lastPeriod.producerSurplus,
+        totalSurplus: lastPeriod.totalSurplus, maxTotalSurplus: lastPeriod.maxTotalSurplus
+      } : {}
+    };
+  }
+}
+
+// ======================================================================
+// Global state
+// ======================================================================
+const engine = new AuctionEngine();
+let simState = null;
+let autoTimer = null;
+let priceChart = null;
+let efficiencyChart = null;
+
+// ======================================================================
+// UI helpers
+// ======================================================================
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function getStrategyMix() {
+  return {
+    fundamental: parseInt(document.getElementById('cfg-fundamental').value) || 0,
+    bayesian: parseInt(document.getElementById('cfg-bayesian').value) || 0,
+    profitmax: parseInt(document.getElementById('cfg-profitmax').value) || 0,
+    kaplan: parseInt(document.getElementById('cfg-kaplan').value) || 0,
+    zic: parseInt(document.getElementById('cfg-zic').value) || 0,
+  };
+}
+
+function validateTraderCount() {
+  const mix = getStrategyMix();
+  const total = Object.values(mix).reduce((a, b) => a + b, 0);
+  const needed = 12;
+  const warn = document.getElementById('trader-count-warn');
+  warn.textContent = total < needed ? `Need ${needed} traders (${total} assigned)` : '';
+}
+
+document.querySelectorAll('.config-panel input[type="number"]').forEach(el => {
+  el.addEventListener('input', validateTraderCount);
+});
+
+function setButtonsEnabled(enabled) {
+  ['btn-step', 'btn-run-period', 'btn-run-all'].forEach(id => {
+    document.getElementById(id).disabled = !enabled;
+  });
+}
+
+function toggleExplanation() {
+  document.getElementById('explanation-overlay').classList.toggle('show');
+}
+
+// ======================================================================
+// Button actions (now call engine directly)
+// ======================================================================
+function initSimulation() {
+  const seed = Math.floor(Math.random() * 100000);
+  engine.init({ strategyMix: getStrategyMix(), randomSeed: seed });
+  simState = engine.toDict();
+  updateAll();
+  setButtonsEnabled(true);
+}
+
+function stepSimulation() {
+  if (!simState || simState.phase === 'complete') return;
+  simState = engine.step();
+  updateAll();
+  if (simState.phase === 'complete') { setButtonsEnabled(false); stopAuto(); }
+}
+
+function runPeriod() {
+  if (!simState || simState.phase === 'complete') return;
+  simState = engine.runPeriod();
+  updateAll();
+  if (simState.phase === 'complete') { setButtonsEnabled(false); stopAuto(); }
+}
+
+function runAll() {
+  if (!simState || simState.phase === 'complete') return;
+  simState = engine.runAll();
+  updateAll();
+  setButtonsEnabled(false); stopAuto();
+}
+
+function resetSimulation() {
+  stopAuto();
+  const seed = Math.floor(Math.random() * 100000);
+  engine.init({ strategyMix: getStrategyMix(), randomSeed: seed });
+  simState = engine.toDict();
+  updateAll();
+  setButtonsEnabled(true);
+}
+
+// ======================================================================
+// Auto run
+// ======================================================================
+function toggleAuto() {
+  if (autoTimer) { stopAuto(); return; }
+  const btn = document.getElementById('btn-auto');
+  btn.textContent = 'Stop'; btn.style.background = '#da3633';
+  const speed = parseInt(document.getElementById('speed-slider').value);
+  autoTimer = setInterval(() => {
+    if (!simState || simState.phase === 'complete') { stopAuto(); return; }
+    stepSimulation();
+  }, speed);
+}
+
+function stopAuto() {
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+  const btn = document.getElementById('btn-auto');
+  btn.textContent = 'Auto'; btn.style.background = '';
+}
+
+// ======================================================================
+// Update all panels
+// ======================================================================
+function updateAll() {
+  if (!simState) return;
+  renderOrderBook();
+  updatePriceChart();
+  updateMetrics();
+  renderTraderGrid();
+  document.getElementById('trader-phase-label').textContent = simState.phase.replace(/_/g, ' ');
+  if (simState.equilibriumInfo) {
+    document.getElementById('eq-price-value').textContent =
+      simState.equilibriumInfo.price != null ? simState.equilibriumInfo.price.toFixed(1) : '—';
+    document.getElementById('eq-qty-value').textContent =
+      simState.equilibriumInfo.quantity != null ? simState.equilibriumInfo.quantity : '—';
+  }
+}
+
+function renderOrderBook() {
+  const container = document.getElementById('orderbook-content');
+  const eqPrice = simState.equilibriumInfo && simState.equilibriumInfo.price;
+  const bids = simState.currentRoundBids || [];
+  const asks = simState.currentRoundAsks || [];
+  if (bids.length === 0 && asks.length === 0 && simState.phase === 'idle') {
+    container.innerHTML = '<p class="no-orders">Press Init to start, then Step</p>';
+    document.getElementById('spread-display').textContent = 'Spread: —';
+    return;
+  }
+  const allPrices = [...bids.map(o => o.price), ...asks.map(o => o.price)];
+  const maxPrice = allPrices.length ? Math.max(...allPrices) * 1.1 : 200;
+  let html = '';
+  const sortedBids = [...bids].sort((a, b) => b.price - a.price);
+  for (const o of sortedBids) {
+    const w = Math.max((o.price / maxPrice) * 100, 15);
+    html += `<div class="bid-bar" style="width:${w}%">${o.traderId} @ ${o.price.toFixed(1)}</div>`;
+  }
+  const prevRound = simState.period_history && simState.period_history.length > 0
+    ? simState.period_history[simState.period_history.length - 1] : null;
+  const spread = prevRound && prevRound.spread != null ? prevRound.spread.toFixed(1) : '—';
+  const bestBid = prevRound && prevRound.bestBid != null ? prevRound.bestBid.toFixed(1) : '—';
+  const bestAsk = prevRound && prevRound.bestAsk != null ? prevRound.bestAsk.toFixed(1) : '—';
+  document.getElementById('spread-display').textContent =
+    `Spread: ${spread} | Bid: ${bestBid} | Ask: ${bestAsk}`;
+  html += `<div class="spread-indicator">Spread: ${spread}</div>`;
+  const sortedAsks = [...asks].sort((a, b) => a.price - b.price);
+  for (const o of sortedAsks) {
+    const w = Math.max((o.price / maxPrice) * 100, 15);
+    html += `<div class="ask-bar" style="width:${w}%">${o.traderId} @ ${o.price.toFixed(1)}</div>`;
+  }
+  if (eqPrice != null) {
+    html += `<div style="font-size:0.7rem;color:#58a6ff;margin-top:6px;text-align:center">
+      ═══ P* = ${eqPrice.toFixed(1)} ═══</div>`;
+  }
+  if (bids.length === 0 && asks.length === 0) {
+    html += '<p class="no-orders">No orders this round</p>';
+  }
+  container.innerHTML = html;
+}
+
+function updatePriceChart() {
+  const ctx = document.getElementById('price-chart').getContext('2d');
+  const history = simState.priceHistory || [];
+  const eqPrice = simState.equilibriumInfo && simState.equilibriumInfo.price;
+  const labels = history.map((_, i) => i + 1);
+  const prices = history.map(h => h.price);
+  if (!priceChart) {
+    priceChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Transaction Price', data: prices, borderColor: '#58a6ff',
+            backgroundColor: 'rgba(88,166,255,0.15)', pointRadius: 3, pointBackgroundColor: '#58a6ff',
+            borderWidth: 1.5, tension: 0.1 },
+          { label: 'Equilibrium P*', data: eqPrice != null ? Array(labels.length || 1).fill(eqPrice) : [],
+            borderColor: '#d2991d', borderDash: [6,3], borderWidth: 1.5, pointRadius: 0, fill: false },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: { duration: 200 },
+        plugins: { legend: { labels: { color: '#8b949e', usePointStyle: true, pointStyleWidth: 8, font: { size: 10 } } },
+          tooltip: { callbacks: { label(ctx) {
+            if (ctx.datasetIndex === 0 && history[ctx.dataIndex]) {
+              const h = history[ctx.dataIndex];
+              return `P${h.period}R${h.round}: ${h.price.toFixed(1)} (Bv=${h.buyerValue} Sc=${h.sellerCost})`;
+            }
+            return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(1);
+          }}}},
+        scales: {
+          x: { title: { display: true, text: 'Trade #', color: '#8b949e', font: { size: 10 } },
+            ticks: { color: '#484f58', font: { size: 9 } }, grid: { color: '#21262d' } },
+          y: { title: { display: true, text: 'Price', color: '#8b949e', font: { size: 10 } },
+            ticks: { color: '#484f58', font: { size: 9 } }, grid: { color: '#21262d' } },
+        },
+        interaction: { mode: 'index', intersect: false },
+      },
+    });
+  } else {
+    priceChart.data.labels = labels;
+    priceChart.data.datasets[0].data = prices;
+    priceChart.data.datasets[1].data = eqPrice != null ? Array(labels.length || 1).fill(eqPrice) : [];
+    priceChart.update('none');
+  }
+}
+
+function updateMetrics() {
+  const allPeriods = simState.allPeriods || [];
+  const last = simState.lastPeriodMetrics || {};
+  const eff = last.allocativeEfficiency != null ? (last.allocativeEfficiency * 100).toFixed(1) + '%' : '—';
+  document.getElementById('metric-efficiency').textContent = eff;
+  document.getElementById('metric-consumer').textContent = last.consumerSurplus != null ? last.consumerSurplus.toFixed(1) : '—';
+  document.getElementById('metric-producer').textContent = last.producerSurplus != null ? last.producerSurplus.toFixed(1) : '—';
+  document.getElementById('metric-total').textContent = last.totalSurplus != null ? last.totalSurplus.toFixed(1) : '—';
+  document.getElementById('metric-max-surplus').textContent = last.maxTotalSurplus != null ? last.maxTotalSurplus.toFixed(1) : '—';
+
+  const bar = document.getElementById('metric-efficiency-bar');
+  const effVal = last.allocativeEfficiency || 0;
+  bar.style.width = (effVal * 100) + '%';
+  bar.style.background = effVal > 0.95 ? '#3fb950' : effVal > 0.8 ? '#d2991d' : '#f85149';
+
+  const ctx = document.getElementById('efficiency-chart').getContext('2d');
+  const labels = allPeriods.map(p => 'P' + p.periodNum);
+  const effVals = allPeriods.map(p => p.allocativeEfficiency * 100);
+  const surpluses = allPeriods.map(p => p.totalSurplus);
+  const maxSurpluses = allPeriods.map(p => p.maxTotalSurplus);
+
+  if (!efficiencyChart) {
+    efficiencyChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Efficiency %', data: effVals, yAxisID: 'y',
+            backgroundColor: effVals.map(v => v > 95 ? '#238636aa' : v > 80 ? '#9e6a03aa' : '#da3633aa'),
+            borderColor: effVals.map(v => v > 95 ? '#3fb950' : v > 80 ? '#d2991d' : '#f85149'), borderWidth: 1 },
+          { label: 'Total Surplus', data: surpluses, type: 'line', yAxisID: 'y1',
+            borderColor: '#58a6ff', backgroundColor: 'transparent', pointRadius: 3, borderWidth: 1.5 },
+          { label: 'Max Surplus', data: maxSurpluses, type: 'line', yAxisID: 'y1',
+            borderColor: '#8b949e', borderDash: [4,3], borderWidth: 1, pointRadius: 0 },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+        plugins: { legend: { labels: { color: '#8b949e', usePointStyle: true, pointStyleWidth: 8, font: { size: 9 } } } },
+        scales: {
+          y: { type: 'linear', position: 'left', min: 0, max: 100,
+            title: { display: true, text: 'Efficiency %', color: '#8b949e', font: { size: 10 } },
+            ticks: { color: '#484f58', font: { size: 9 }, callback: v => v + '%' }, grid: { color: '#21262d' } },
+          y1: { type: 'linear', position: 'right',
+            title: { display: true, text: 'Surplus', color: '#8b949e', font: { size: 10 } },
+            ticks: { color: '#484f58', font: { size: 9 } }, grid: { display: false } },
+          x: { ticks: { color: '#484f58', font: { size: 9 } }, grid: { color: '#21262d' } },
+        },
+        interaction: { mode: 'index', intersect: false },
+      },
+    });
+  } else {
+    efficiencyChart.data.labels = labels;
+    efficiencyChart.data.datasets[0].data = effVals;
+    efficiencyChart.data.datasets[0].backgroundColor = effVals.map(v => v > 95 ? '#238636aa' : v > 80 ? '#9e6a03aa' : '#da3633aa');
+    efficiencyChart.data.datasets[0].borderColor = effVals.map(v => v > 95 ? '#3fb950' : v > 80 ? '#d2991d' : '#f85149');
+    efficiencyChart.data.datasets[1].data = surpluses;
+    efficiencyChart.data.datasets[2].data = maxSurpluses;
+    efficiencyChart.update('none');
+  }
+}
+
+function renderTraderGrid() {
+  const grid = document.getElementById('trader-grid');
+  const traders = simState.traders || [];
+  if (!traders.length) { grid.innerHTML = '<p class="no-orders">Click Init to populate traders</p>'; return; }
+  const buyers = traders.filter(t => t.role === 'buyer').sort((a, b) => b.privateValue - a.privateValue);
+  const sellers = traders.filter(t => t.role === 'seller').sort((a, b) => a.privateValue - b.privateValue);
+  let html = '';
+  for (const t of [...buyers, ...sellers]) {
+    const roleCls = t.role === 'buyer' ? 'buyer' : 'seller';
+    const inactive = t.isActive ? '' : 'inactive';
+    const statusCls = t.isActive ? 'active' : 'done';
+    const statusLabel = t.isActive ? 'Active' : 'Done';
+    const profitCls = t.profit >= 0 ? '' : 'neg';
+    html += `<div class="trader-card ${roleCls} ${inactive}">
+      <div class="tc-id"><span class="tc-status ${statusCls}"></span>${t.id}</div>
+      <div class="tc-strategy">${t.strategyName}</div>
+      <div class="tc-value">${t.role === 'buyer' ? 'Value' : 'Cost'}: ${t.privateValue.toFixed(1)}</div>
+      <div class="tc-profit ${profitCls}">Profit: ${t.profit >= 0 ? '+' : ''}${t.profit.toFixed(1)} | Trades: ${t.tradeCount}</div>
+      <div style="font-size:0.65rem;color:#8b949e">${statusLabel}</div>
+    </div>`;
+  }
+  grid.innerHTML = html;
+}
+
+document.addEventListener('DOMContentLoaded', () => { validateTraderCount(); });
+</script>
+</body>
+</html>
