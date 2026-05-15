@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Langton's Ant — 兰顿蚂蚁</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f0f14;
+  --surface: #1a1a24;
+  --border: #2a2a3a;
+  --text: #e0e0e0;
+  --text-dim: #888;
+  --accent: #fbbf24;
+  --accent-glow: rgba(251, 191, 36, 0.4);
+  --danger: #f87171;
+  --danger-glow: rgba(248, 113, 113, 0.3);
+  --info: #60a5fa;
+  --cell-white: #e8e8e8;
+  --cell-black: #1a1a1a;
+  --grid-line: rgba(255, 255, 255, 0.04);
+  --radius: 8px;
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  user-select: none;
+}
+
+/* ── HEADER ── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.header h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), #f59e0b);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.header .subtitle {
+  font-size: 1rem;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.lang-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: var(--font);
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.lang-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── MAIN LAYOUT ── */
+.main-container {
+  display: flex;
+  gap: 20px;
+  width: 100%;
+  max-width: 1200px;
+  flex: 1;
+}
+
+.canvas-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  min-height: 500px;
+  position: relative;
+}
+
+canvas {
+  display: block;
+  cursor: crosshair;
+  image-rendering: crisp-edges;
+}
+
+.sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sidebar h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.rules-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rules-list li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.rules-list .rule-num {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.legend-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.legend-dot.white { background: var(--cell-white); border: 1px solid var(--border); }
+.legend-dot.black { background: var(--cell-black); border: 1px solid #444; }
+.legend-dot.ant {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+  border-radius: 50%;
+  width: 12px;
+  height: 12px;
+}
+
+.highway-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+/* ── CONTROLS ── */
+.controls-bar {
+  width: 100%;
+  max-width: 1200px;
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.btn {
+  padding: 8px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-family: var(--font);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn:hover {
+  border-color: var(--accent);
+  background: #241f10;
+}
+.btn:active { transform: scale(0.97); }
+.btn.primary {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.btn.primary:hover {
+  background: #fcd34d;
+}
+.btn.primary.paused {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.btn.danger:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.speed-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+.speed-group label {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.speed-group input[type="range"] {
+  width: 100px;
+  accent-color: var(--accent);
+}
+
+.stats {
+  display: flex;
+  gap: 20px;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+.stats span { color: var(--accent); font-weight: 600; }
+
+/* ── FOOTER ── */
+.footer {
+  margin-top: 16px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+.footer a { color: var(--accent); text-decoration: none; }
+.footer a:hover { text-decoration: underline; }
+.footer .divider { margin: 0 12px; opacity: 0.3; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 900px) {
+  .main-container { flex-direction: column; }
+  .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; gap: 14px; padding: 14px; }
+  .sidebar > div { flex: 1; min-width: 200px; }
+  .sidebar h3 { font-size: 0.82rem; }
+  .sidebar .rules-list li, .sidebar .legend-item { font-size: 0.78rem; }
+  .canvas-panel { min-height: 360px; }
+  .controls-bar { justify-content: center; }
+  .speed-group { margin-left: 0; }
+}
+@media (max-width: 500px) {
+  .header h1 { font-size: 1.2rem; }
+  .sidebar { flex-direction: column; }
+  .btn { padding: 7px 12px; font-size: 0.8rem; }
+  .stats { gap: 10px; font-size: 0.75rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div style="text-align:center">
+    <h1 data-i18n="title">Langton's Ant</h1>
+    <div class="subtitle" data-i18n="subtitle">兰顿蚂蚁 — 细胞自动机模型</div>
+  </div>
+  <button class="lang-btn" id="langToggle" data-i18n="langLabel">English</button>
+</div>
+
+<div class="main-container" id="mainContainer">
+  <div class="canvas-panel" id="canvasPanel">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div class="sidebar" id="sidebar">
+    <div>
+      <h3 data-i18n="rulesTitle">移动规则</h3>
+      <ul class="rules-list" data-i18n-list="rules">
+        <li><span class="rule-num">1</span><span data-i18n="rule1">处于黑格 → 右转 90°（顺时针），将该格变为白色</span></li>
+        <li><span class="rule-num">2</span><span data-i18n="rule2">处于白格 → 左转 90°（逆时针），将该格变为黑色</span></li>
+        <li><span class="rule-num">3</span><span data-i18n="rule3">随后向前移动一步</span></li>
+        <li><span class="rule-num">4</span><span data-i18n="rule4">约一万步后，进入以 104 步为周期的"高速公路"模式</span></li>
+      </ul>
+    </div>
+    <div>
+      <h3 data-i18n="legendTitle">图例</h3>
+      <div class="legend">
+        <div class="legend-item"><span class="legend-dot white"></span><span data-i18n="legendWhite">白色格子</span></div>
+        <div class="legend-item"><span class="legend-dot black"></span><span data-i18n="legendBlack">黑色格子</span></div>
+        <div class="legend-item"><span class="legend-dot ant"></span><span data-i18n="legendAnt">蚂蚁</span></div>
+      </div>
+    </div>
+    <div>
+      <h3 data-i18n="historyTitle">背景</h3>
+      <p style="font-size:0.85rem;color:var(--text-dim);line-height:1.5;" data-i18n="historyDesc">
+        1986 年由克里斯托夫·兰顿提出，2000 年其图灵完备性被证实。蚂蚁的简单规则产生出令人惊叹的复杂行为。
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="controls-bar">
+  <button class="btn primary" id="btnPlay" data-i18n="start">开始</button>
+  <button class="btn" id="btnStep" data-i18n="step">下一步</button>
+  <button class="btn" id="btnRandom" data-i18n="random">随机</button>
+  <button class="btn danger" id="btnClear" data-i18n="clear">清空</button>
+
+  <div class="speed-group">
+    <label data-i18n="speed">速度</label>
+    <input type="range" id="speedSlider" min="1" max="20" value="10">
+  </div>
+
+  <div class="stats">
+    <span data-i18n="steps">步数</span>: <strong id="stepCount">0</strong>
+    <span data-i18n="position">位置</span>: <strong id="antPos">40, 30</strong>
+    <span data-i18n="direction">方向</span>: <strong id="antDir">N</strong>
+    <span id="highwayBadge" style="display:none" class="highway-badge">HIGHWAY</span>
+  </div>
+</div>
+
+<div class="footer">
+  Created by <strong>BW</strong>
+  <span class="divider">|</span>
+  Langton's Ant &copy; 1986 Chris Langton
+  <span class="divider">|</span>
+  <span data-i18n="turingComplete">2000 年证实图灵完备</span>
+</div>
+
+<script>
+// ============================================================
+//  Langton's Ant — 兰顿蚂蚁
+//  Created by BW
+// ============================================================
+
+const i18n = {
+  zh: {
+    title: "Langton's Ant",
+    subtitle: '兰顿蚂蚁 — 细胞自动机模型',
+    langLabel: '中文',
+    rulesTitle: '移动规则',
+    rule1: '处于黑格 → 右转 90°（顺时针），将该格变为白色',
+    rule2: '处于白格 → 左转 90°（逆时针），将该格变为黑色',
+    rule3: '随后向前移动一步',
+    rule4: '约一万步后，进入以 104 步为周期的"高速公路"模式',
+    legendTitle: '图例',
+    legendWhite: '白色格子',
+    legendBlack: '黑色格子',
+    legendAnt: '蚂蚁',
+    historyTitle: '背景',
+    historyDesc: '1986 年由克里斯托夫·兰顿提出，2000 年其图灵完备性被证实。蚂蚁的简单规则产生出令人惊叹的复杂行为。',
+    start: '开始',
+    pause: '暂停',
+    step: '下一步',
+    random: '随机',
+    clear: '清空',
+    speed: '速度',
+    steps: '步数',
+    position: '位置',
+    direction: '方向',
+    turingComplete: '2000 年证实图灵完备',
+  },
+  en: {
+    title: "Langton's Ant",
+    subtitle: "Langton's Ant — Cellular Automaton",
+    langLabel: 'EN',
+    rulesTitle: 'Rules',
+    rule1: 'On a black cell → turn right 90°, flip cell to white',
+    rule2: 'On a white cell → turn left 90°, flip cell to black',
+    rule3: 'Then move forward one step',
+    rule4: 'After ~10,000 steps, forms a repeating 104-step highway',
+    legendTitle: 'Legend',
+    legendWhite: 'White cell',
+    legendBlack: 'Black cell',
+    legendAnt: 'Ant',
+    historyTitle: 'Background',
+    historyDesc: 'Proposed by Chris Langton in 1986. Turing completeness proved in 2000. Simple rules produce astonishing emergent complexity.',
+    start: 'Start',
+    pause: 'Pause',
+    step: 'Step',
+    random: 'Random',
+    clear: 'Clear',
+    speed: 'Speed',
+    steps: 'Steps',
+    position: 'Position',
+    direction: 'Dir',
+    turingComplete: 'Turing-complete (proved 2000)',
+  },
+};
+
+let lang = 'zh';
+
+function t(key) {
+  return i18n[lang][key] || key;
+}
+
+function updateI18n() {
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (key === 'langLabel') {
+      el.textContent = lang === 'zh' ? 'English' : '中文';
+    } else {
+      el.textContent = t(key);
+    }
+  });
+  const btnPlay = document.getElementById('btnPlay');
+  if (!running) {
+    btnPlay.textContent = t('start');
+    btnPlay.classList.remove('paused');
+  } else {
+    btnPlay.textContent = t('pause');
+    btnPlay.classList.add('paused');
+  }
+  updateDirectionDisplay();
+}
+
+// ── GRID & ANT ──
+const COLS = 80;
+const ROWS = 60;
+let grid = new Array(ROWS).fill(null).map(() => new Array(COLS).fill(0));
+
+const DIR_NAMES_ZH = ['N', 'E', 'S', 'W'];
+const DIR_NAMES_EN = ['N', 'E', 'S', 'W'];
+const DIR_ARROWS = ['▲', '▶', '▼', '◀'];
+const DR = [-1, 0, 1, 0];
+const DC = [0, 1, 0, -1];
+
+let ant = { r: Math.floor(ROWS / 2), c: Math.floor(COLS / 2), dir: 0 };
+let running = false;
+let steps = 0;
+let speedMs = 100;
+let animFrameId = null;
+let lastStepTime = 0;
+let cellSize = 10;
+let highwayNotified = false;
+
+// ── CANVAS SETUP ──
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const canvasPanel = document.getElementById('canvasPanel');
+
+function resizeCanvas() {
+  const rect = canvasPanel.getBoundingClientRect();
+  const w = rect.width;
+  const h = rect.height;
+  cellSize = Math.min(Math.floor(w / COLS), Math.floor(h / ROWS));
+  if (cellSize < 4) cellSize = 4;
+  canvas.width = cellSize * COLS;
+  canvas.height = cellSize * ROWS;
+  draw();
+}
+
+// ── DRAWING ──
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // draw cells
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      ctx.fillStyle = grid[r][c] ? '#1a1a1a' : '#e0e0e0';
+      ctx.fillRect(c * cellSize, r * cellSize, cellSize, cellSize);
+    }
+  }
+
+  // grid lines (only when cells are big enough)
+  if (cellSize >= 8) {
+    ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+    ctx.lineWidth = 0.5;
+    for (let x = 0; x <= COLS; x++) {
+      ctx.beginPath();
+      ctx.moveTo(x * cellSize, 0);
+      ctx.lineTo(x * cellSize, canvas.height);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= ROWS; y++) {
+      ctx.beginPath();
+      ctx.moveTo(0, y * cellSize);
+      ctx.lineTo(canvas.width, y * cellSize);
+      ctx.stroke();
+    }
+  }
+
+  // draw ant
+  const cx = ant.c * cellSize + cellSize / 2;
+  const cy = ant.r * cellSize + cellSize / 2;
+  const sz = cellSize * 0.7;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.shadowColor = 'rgba(251, 191, 36, 0.8)';
+  ctx.shadowBlur = cellSize * 0.6;
+
+  // draw triangle pointing in ant's direction
+  ctx.fillStyle = '#fbbf24';
+  ctx.beginPath();
+  switch (ant.dir) {
+    case 0: // N
+      ctx.moveTo(0, -sz / 2);
+      ctx.lineTo(-sz / 2, sz / 2);
+      ctx.lineTo(sz / 2, sz / 2);
+      break;
+    case 1: // E
+      ctx.moveTo(sz / 2, 0);
+      ctx.lineTo(-sz / 2, -sz / 2);
+      ctx.lineTo(-sz / 2, sz / 2);
+      break;
+    case 2: // S
+      ctx.moveTo(0, sz / 2);
+      ctx.lineTo(-sz / 2, -sz / 2);
+      ctx.lineTo(sz / 2, -sz / 2);
+      break;
+    case 3: // W
+      ctx.moveTo(-sz / 2, 0);
+      ctx.lineTo(sz / 2, -sz / 2);
+      ctx.lineTo(sz / 2, sz / 2);
+      break;
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+// ── ANT LOGIC ──
+function stepAnt() {
+  const cell = grid[ant.r][ant.c];
+  if (cell === 1) {
+    // black → turn right, flip to white
+    ant.dir = (ant.dir + 1) % 4;
+    grid[ant.r][ant.c] = 0;
+  } else {
+    // white → turn left, flip to black
+    ant.dir = (ant.dir + 3) % 4;
+    grid[ant.r][ant.c] = 1;
+  }
+  ant.r += DR[ant.dir];
+  ant.c += DC[ant.dir];
+  // toroidal wrap
+  ant.r = (ant.r + ROWS) % ROWS;
+  ant.c = (ant.c + COLS) % COLS;
+  steps++;
+  updateStats();
+}
+
+function updateStats() {
+  document.getElementById('stepCount').textContent = steps;
+  document.getElementById('antPos').textContent = ant.c + ', ' + ant.r;
+  updateDirectionDisplay();
+
+  if (steps >= 10000 && !highwayNotified) {
+    highwayNotified = true;
+    document.getElementById('highwayBadge').style.display = 'inline-block';
+  }
+}
+
+function updateDirectionDisplay() {
+  const dirEl = document.getElementById('antDir');
+  dirEl.textContent = DIR_ARROWS[ant.dir] + ' ' + DIR_NAMES_ZH[ant.dir];
+}
+
+// ── ANIMATION LOOP ──
+function loop(timestamp) {
+  if (!running) return;
+  animFrameId = requestAnimationFrame(loop);
+  if (timestamp - lastStepTime >= speedMs) {
+    stepAnt();
+    draw();
+    lastStepTime = timestamp;
+  }
+}
+
+function start() {
+  if (running) return;
+  running = true;
+  lastStepTime = performance.now();
+  animFrameId = requestAnimationFrame(loop);
+  const btn = document.getElementById('btnPlay');
+  btn.textContent = t('pause');
+  btn.classList.add('paused');
+}
+
+function pause() {
+  running = false;
+  if (animFrameId) cancelAnimationFrame(animFrameId);
+  animFrameId = null;
+  const btn = document.getElementById('btnPlay');
+  btn.textContent = t('start');
+  btn.classList.remove('paused');
+}
+
+function togglePlay() {
+  running ? pause() : start();
+}
+
+// ── MOUSE ──
+let mouseDown = false;
+let paintMode = null;
+
+function canvasToGrid(e) {
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const c = Math.floor(x / cellSize);
+  const r = Math.floor(y / cellSize);
+  return { r, c };
+}
+
+canvas.addEventListener('mousedown', e => {
+  if (e.button === 0) {
+    mouseDown = true;
+    const { r, c } = canvasToGrid(e);
+    if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+      paintMode = grid[r][c] ? 'white' : 'black';
+      grid[r][c] = paintMode === 'black' ? 1 : 0;
+      draw();
+    }
+  } else if (e.button === 2) {
+    e.preventDefault();
+    const { r, c } = canvasToGrid(e);
+    if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+      ant.r = r;
+      ant.c = c;
+      updateStats();
+      draw();
+    }
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (!mouseDown) return;
+  const { r, c } = canvasToGrid(e);
+  if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+    grid[r][c] = paintMode === 'black' ? 1 : 0;
+    draw();
+  }
+});
+
+canvas.addEventListener('mouseup', () => { mouseDown = false; });
+canvas.addEventListener('mouseleave', () => { mouseDown = false; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// Touch
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  mouseDown = true;
+  const { r, c } = canvasToGrid(touch);
+  if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+    paintMode = grid[r][c] ? 'white' : 'black';
+    grid[r][c] = paintMode === 'black' ? 1 : 0;
+    draw();
+  }
+});
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!mouseDown) return;
+  const touch = e.touches[0];
+  const { r, c } = canvasToGrid(touch);
+  if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+    grid[r][c] = paintMode === 'black' ? 1 : 0;
+    draw();
+  }
+});
+canvas.addEventListener('touchend', () => { mouseDown = false; });
+
+// Double-click to place ant
+canvas.addEventListener('dblclick', e => {
+  const { r, c } = canvasToGrid(e);
+  if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+    ant.r = r;
+    ant.c = c;
+    updateStats();
+    draw();
+  }
+});
+
+// ── CONTROLS ──
+document.getElementById('btnPlay').addEventListener('click', togglePlay);
+document.getElementById('btnStep').addEventListener('click', () => {
+  if (running) pause();
+  stepAnt();
+  draw();
+});
+document.getElementById('btnRandom').addEventListener('click', () => {
+  if (running) pause();
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      grid[r][c] = Math.random() > 0.5 ? 1 : 0;
+    }
+  }
+  ant.r = Math.floor(Math.random() * ROWS);
+  ant.c = Math.floor(Math.random() * COLS);
+  ant.dir = Math.floor(Math.random() * 4);
+  steps = 0;
+  highwayNotified = false;
+  document.getElementById('highwayBadge').style.display = 'none';
+  draw();
+  updateStats();
+});
+document.getElementById('btnClear').addEventListener('click', () => {
+  if (running) pause();
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      grid[r][c] = 0;
+    }
+  }
+  ant.r = Math.floor(ROWS / 2);
+  ant.c = Math.floor(COLS / 2);
+  ant.dir = 0;
+  steps = 0;
+  highwayNotified = false;
+  document.getElementById('highwayBadge').style.display = 'none';
+  draw();
+  updateStats();
+});
+document.getElementById('speedSlider').addEventListener('input', e => {
+  speedMs = 1050 - (e.target.value * 50);
+});
+
+document.getElementById('langToggle').addEventListener('click', () => {
+  lang = lang === 'zh' ? 'en' : 'zh';
+  updateI18n();
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  switch (e.code) {
+    case 'Space': e.preventDefault(); togglePlay(); break;
+    case 'KeyS': e.preventDefault(); if (!running) { stepAnt(); draw(); } break;
+    case 'KeyR': e.preventDefault(); document.getElementById('btnRandom').click(); break;
+    case 'KeyC': e.preventDefault(); document.getElementById('btnClear').click(); break;
+  }
+});
+
+// ── INIT ──
+function init() {
+  resizeCanvas();
+  // start with all-white grid, ant at center pointing north
+  ant.r = Math.floor(ROWS / 2);
+  ant.c = Math.floor(COLS / 2);
+  ant.dir = 0;
+  draw();
+  updateStats();
+  updateI18n();
+}
+
+window.addEventListener('resize', resizeCanvas);
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
