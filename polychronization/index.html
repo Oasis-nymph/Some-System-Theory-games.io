@@ -1,0 +1,1483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Polychronization — 多时同步组</title>
+<style>
+/* ============ CSS 变量 / Variables ============ */
+:root {
+  --bg: #0f0f14;
+  --surface: #1a1a24;
+  --surface2: #222232;
+  --border: #2a2a3a;
+  --text: #e0e0e0;
+  --text-dim: #888;
+  --accent: #4ade80;
+  --accent2: #60a5fa;
+  --danger: #f87171;
+  --warning: #fbbf24;
+  --purple: #c084fc;
+  --radius: 8px;
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ============ 顶部标题栏 / Header ============ */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.header-left { display: flex; align-items: center; gap: 12px; }
+.header-left h1 { font-size: 1.1rem; font-weight: 600; color: var(--accent); }
+.header-left .subtitle { font-size: 0.8rem; color: var(--text-dim); }
+.header-right { display: flex; gap: 8px; align-items: center; }
+
+.lang-btn {
+  padding: 5px 14px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface2); color: var(--text); cursor: pointer;
+  font-size: 0.8rem; transition: all 0.2s;
+}
+.lang-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ============ 控制栏 / Controls ============ */
+.controls {
+  display: flex; align-items: center; gap: 10px; padding: 8px 20px;
+  border-bottom: 1px solid var(--border); background: var(--surface);
+  flex-shrink: 0; flex-wrap: wrap;
+}
+
+.template-select {
+  padding: 5px 10px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface2); color: var(--text); font-size: 0.82rem;
+  cursor: pointer; outline: none; min-width: 140px;
+}
+.template-select:focus { border-color: var(--accent); }
+
+.btn {
+  padding: 5px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface2); color: var(--text); cursor: pointer;
+  font-size: 0.8rem; transition: all 0.15s; white-space: nowrap;
+  font-family: var(--font);
+}
+.btn:hover { border-color: var(--accent2); color: var(--accent2); }
+.btn.active { background: var(--accent2); color: #000; border-color: var(--accent2); }
+.btn.stim { border-color: var(--warning); }
+.btn.stim:hover { background: var(--warning); color: #000; }
+
+.speed-group { display: flex; gap: 2px; margin-left: 4px; }
+.speed-group .btn { padding: 5px 8px; font-size: 0.72rem; border-radius: 0; }
+.speed-group .btn:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.speed-group .btn:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.speed-group .btn.sel { background: var(--accent); color: #000; border-color: var(--accent); }
+
+.separator { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+
+/* ============ 主区域 / Main Layout ============ */
+.main {
+  display: flex; flex: 1; min-height: 0; gap: 10px; padding: 10px;
+}
+
+/* 左侧：可视化面板 / Left: visualization panels */
+.viz-col {
+  flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0;
+}
+
+.panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden; position: relative;
+}
+.panel-label {
+  position: absolute; top: 6px; left: 10px; font-size: 0.7rem;
+  color: var(--text-dim); z-index: 2; pointer-events: none;
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+.raster-panel { flex: 5; }
+.rate-panel { flex: 1.5; }
+.weight-panel { flex: 2; }
+
+.panel canvas { width: 100%; height: 100%; display: block; }
+
+/* 右侧：信息面板 / Right: info panels */
+.info-col {
+  width: 340px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px;
+}
+
+.explain-panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px; transition: opacity 0.5s;
+  flex-shrink: 0;
+}
+.explain-panel.fading { opacity: 0.3; }
+.explain-panel h3 { font-size: 0.85rem; color: var(--accent); margin-bottom: 6px; }
+.explain-panel .exp-subtitle { font-size: 0.7rem; color: var(--text-dim); margin-bottom: 10px; }
+.explain-panel p { font-size: 0.78rem; line-height: 1.5; color: var(--text); margin-bottom: 8px; }
+.explain-panel .ref { font-size: 0.68rem; color: var(--text-dim); font-style: italic; margin-top: 6px; }
+.explain-actions { display: flex; gap: 6px; margin-top: 8px; }
+.explain-actions .btn { font-size: 0.7rem; padding: 3px 10px; }
+
+.params-panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px; flex-shrink: 0;
+}
+.params-panel h3 { font-size: 0.82rem; color: var(--accent2); margin-bottom: 10px; }
+.param-row { margin-bottom: 10px; }
+.param-row label { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-dim); margin-bottom: 3px; }
+.param-row label span { color: var(--text); font-family: var(--font-mono); }
+.param-row input[type=range] { width: 100%; accent-color: var(--accent2); }
+.param-row input[type=checkbox] { accent-color: var(--accent2); margin-right: 6px; }
+
+.groups-panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px; flex: 1; overflow-y: auto;
+  min-height: 60px;
+}
+.groups-panel h3 { font-size: 0.82rem; color: var(--purple); margin-bottom: 8px; }
+.group-entry {
+  font-size: 0.72rem; padding: 4px 8px; margin-bottom: 4px;
+  border-radius: 4px; background: var(--surface2); font-family: var(--font-mono);
+  display: flex; align-items: center; gap: 8px;
+}
+.group-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.no-groups { font-size: 0.72rem; color: var(--text-dim); text-align: center; padding: 10px; }
+
+/* 隐藏自定义参数面板 / Hide params in preset mode */
+.params-panel.hidden { display: none; }
+
+/* ============ 响应式 / Responsive ============ */
+@media (max-width: 900px) {
+  .main { flex-direction: column; }
+  .info-col { width: 100%; flex-direction: row; flex-wrap: wrap; }
+  .info-col > * { flex: 1; min-width: 200px; }
+  .header-left h1 { font-size: 0.95rem; }
+}
+
+/* ============ Toast 提示 / Toast notification ============ */
+.toast {
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+  background: var(--accent); color: #000; padding: 8px 20px;
+  border-radius: var(--radius); font-size: 0.85rem; font-weight: 600;
+  z-index: 100; pointer-events: none; opacity: 0; transition: opacity 0.3s;
+}
+.toast.show { opacity: 1; }
+
+/* 仿真速度标签 / Sim speed indicator */
+.sim-info {
+  font-size: 0.68rem; color: var(--text-dim); font-family: var(--font-mono);
+  margin-left: 8px;
+}
+</style>
+</head>
+<body>
+
+<!-- 标题栏 -->
+<div class="header">
+  <div class="header-left">
+    <h1 data-i18n="title">多时同步组 — 脉冲神经网络</h1>
+    <span class="subtitle" data-i18n="subtitle">Izhikevich (2006) Polychronization Model</span>
+  </div>
+  <div class="header-right">
+    <span class="sim-info" id="simInfo">t=0ms</span>
+    <button class="lang-btn" id="langToggle" data-i18n="langLabel">EN</button>
+  </div>
+</div>
+
+<!-- 控制栏 -->
+<div class="controls">
+  <select class="template-select" id="templateSelect"></select>
+  <button class="btn" id="btnPlay" data-i18n="play">▶ 播放</button>
+  <button class="btn" id="btnPause" data-i18n="pause">⏸ 暂停</button>
+  <button class="btn" id="btnStep" data-i18n="step">⏭ 单步</button>
+  <button class="btn" id="btnReset" data-i18n="reset">🔄 重置</button>
+  <span class="separator"></span>
+  <span style="font-size:0.72rem;color:var(--text-dim)" data-i18n="speed">速度</span>
+  <div class="speed-group" id="speedGroup">
+    <button class="btn" data-speed="1">1x</button>
+    <button class="btn sel" data-speed="3">3x</button>
+    <button class="btn" data-speed="8">8x</button>
+    <button class="btn" data-speed="20">20x</button>
+  </div>
+  <span class="separator"></span>
+  <button class="btn stim" id="btnStim" data-i18n="stimulate">⚡ 刺激</button>
+</div>
+
+<!-- 主区域 -->
+<div class="main">
+  <!-- 左侧：可视化 -->
+  <div class="viz-col">
+    <div class="panel raster-panel">
+      <span class="panel-label" data-i18n="rasterLabel">Spike Raster / 脉冲栅格</span>
+      <canvas id="rasterCanvas"></canvas>
+    </div>
+    <div class="panel rate-panel">
+      <span class="panel-label" data-i18n="rateLabel">Firing Rate / 发放率 (Hz)</span>
+      <canvas id="rateCanvas"></canvas>
+    </div>
+    <div class="panel weight-panel">
+      <span class="panel-label" data-i18n="weightLabel">Weight Matrix / 权重矩阵</span>
+      <canvas id="weightCanvas"></canvas>
+    </div>
+  </div>
+
+  <!-- 右侧：信息 -->
+  <div class="info-col">
+    <div class="explain-panel" id="explainPanel">
+      <h3 data-i18n="expTitle">经典结果解释</h3>
+      <div id="explainContent"></div>
+      <div class="explain-actions">
+        <button class="btn" id="btnPin" data-i18n="pin">📌 固定</button>
+        <button class="btn" id="btnCloseExp" data-i18n="close">✕ 关闭</button>
+      </div>
+    </div>
+    <div class="params-panel hidden" id="paramsPanel">
+      <h3 data-i18n="paramsTitle">自定义参数</h3>
+      <div class="param-row">
+        <label data-i18n="paramN">神经元数量 <span id="valN">300</span></label>
+        <input type="range" id="paramN" min="50" max="800" value="300" step="10">
+      </div>
+      <div class="param-row">
+        <label data-i18n="paramM">连接数/神经元 <span id="valM">30</span></label>
+        <input type="range" id="paramM" min="5" max="100" value="30" step="5">
+      </div>
+      <div class="param-row">
+        <label data-i18n="paramDelay">延迟范围 (ms) <span id="valDelay">1-20</span></label>
+        <input type="range" id="paramDelayMax" min="2" max="50" value="20" step="1">
+      </div>
+      <div class="param-row">
+        <label data-i18n="paramNoise">噪声强度 <span id="valNoise">5</span></label>
+        <input type="range" id="paramNoise" min="0" max="30" value="5" step="0.5">
+      </div>
+      <div class="param-row">
+        <label data-i18n="paramEI">兴奋性比例 (%) <span id="valEI">80</span></label>
+        <input type="range" id="paramEI" min="50" max="95" value="80" step="5">
+      </div>
+      <div class="param-row">
+        <label>
+          <input type="checkbox" id="paramSTDP" checked>
+          <span data-i18n="paramSTDP">STDP 学习</span>
+        </label>
+      </div>
+      <div class="param-row">
+        <label data-i18n="paramSTDPRate">STDP 学习率 <span id="valSTDPRate">0.01</span></label>
+        <input type="range" id="paramSTDPRate" min="0.001" max="0.1" value="0.01" step="0.001">
+      </div>
+    </div>
+    <div class="groups-panel" id="groupsPanel">
+      <h3 data-i18n="groupsTitle">多时同步组 / Polychronous Groups</h3>
+      <div id="groupsContent"><span class="no-groups" data-i18n="noGroups">运行仿真并点击 ⚡ 刺激以检测群组</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ======================================================================
+//  1. 国际化 / Internationalization (i18n)
+// ======================================================================
+const i18n = {
+  zh: {
+    title: '多时同步组 — 脉冲神经网络',
+    subtitle: 'Izhikevich (2006) Polychronization Model',
+    langLabel: 'EN',
+    play: '▶ 播放',
+    pause: '⏸ 暂停',
+    step: '⏭ 单步',
+    reset: '🔄 重置',
+    speed: '速度',
+    stimulate: '⚡ 刺激',
+    rasterLabel: '脉冲栅格 / Spike Raster',
+    rateLabel: '发放率 / Firing Rate (Hz)',
+    weightLabel: '权重矩阵 / Weight Matrix',
+    expTitle: '💡 经典结果解释',
+    paramsTitle: '🎛 自定义参数',
+    paramN: '神经元数量',
+    paramM: '连接数/神经元',
+    paramDelay: '延迟范围 (ms)',
+    paramNoise: '噪声强度',
+    paramEI: '兴奋性比例 (%)',
+    paramSTDP: 'STDP 学习',
+    paramSTDPRate: 'STDP 学习率',
+    groupsTitle: '🧩 多时同步组',
+    noGroups: '运行仿真并点击 ⚡ 刺激以检测群组',
+    pin: '📌 固定',
+    close: '✕ 关闭',
+    stimApplied: '⚡ 刺激已施加！观察群组发放模式',
+    templateChanged: '已切换到模板：',
+    simPaused: '⏸ 仿真已暂停',
+    simRunning: '▶ 仿真运行中',
+    noGroupsDetected: '未检测到稳定的多时同步组，请多刺激几次',
+    groupsDetected: '检测到 {n} 个多时同步组',
+    customMode: '🔧 自由探索参数空间。调整右侧滑块观察网络动力学变化。',
+  },
+  en: {
+    title: 'Polychronization — Spiking Neural Network',
+    subtitle: 'Izhikevich (2006) Polychronization Model',
+    langLabel: '中文',
+    play: '▶ Play',
+    pause: '⏸ Pause',
+    step: '⏭ Step',
+    reset: '🔄 Reset',
+    speed: 'Speed',
+    stimulate: '⚡ Stimulate',
+    rasterLabel: 'Spike Raster / 脉冲栅格',
+    rateLabel: 'Firing Rate / 发放率 (Hz)',
+    weightLabel: 'Weight Matrix / 权重矩阵',
+    expTitle: '💡 Classic Results',
+    paramsTitle: '🎛 Custom Parameters',
+    paramN: 'Neuron Count',
+    paramM: 'Connections/Neuron',
+    paramDelay: 'Delay Range (ms)',
+    paramNoise: 'Noise Level',
+    paramEI: 'Excitatory Ratio (%)',
+    paramSTDP: 'STDP Learning',
+    paramSTDPRate: 'STDP Learning Rate',
+    groupsTitle: '🧩 Polychronous Groups',
+    noGroups: 'Run simulation and click ⚡ Stimulate to detect groups',
+    pin: '📌 Pin',
+    close: '✕ Close',
+    stimApplied: '⚡ Stimulation applied! Observe group firing patterns',
+    templateChanged: 'Switched to template: ',
+    simPaused: '⏸ Simulation paused',
+    simRunning: '▶ Simulation running',
+    noGroupsDetected: 'No stable polychronous groups detected. Try stimulating a few more times.',
+    groupsDetected: 'Detected {n} polychronous groups',
+    customMode: '🔧 Free exploration mode. Adjust the sliders on the right to explore network dynamics.',
+  }
+};
+
+let lang = 'zh';
+function t(key) {
+  return i18n[lang][key] || key;
+}
+
+function updateLang() {
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  const btn = document.getElementById('langToggle');
+  btn.textContent = lang === 'zh' ? 'EN' : '中文';
+
+  // 更新所有 data-i18n 元素
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (key === 'langLabel') return;
+    if (el.tagName === 'INPUT' && el.type === 'range') return;
+    if (el.tagName === 'OPTION') {
+      // 选项文本在模板定义里更新
+      return;
+    }
+    const text = i18n[lang][key];
+    if (text !== undefined) el.textContent = text;
+  });
+
+  // 更新下拉菜单中的模板名称
+  updateTemplateSelect();
+  // 刷新解释面板
+  updateExplanation();
+  // 更新群组面板标题
+  updateGroupsTitle();
+}
+
+function updateGroupsTitle() {
+  const el = document.querySelector('.groups-panel h3');
+  if (el) el.textContent = t('groupsTitle');
+}
+
+// ======================================================================
+//  2. 预设模板定义 / Preset Templates
+// ======================================================================
+const PRESETS = [
+  {
+    name_zh: '1. 平衡网络', name_en: '1. Balanced Network',
+    N: 300, M: 30, delayMin: 1, delayMax: 10, noise: 5, eiRatio: 0.8,
+    stdpEnabled: true, stdpRate: 0.01,
+    expl_zh: `<p><strong>"兴奋-抑制平衡是皮层正常工作的基础状态"</strong>。van Vreeswijk & Sompolinsky (1996) 证明：当兴奋和抑制电流大致相消时，神经元发放呈高度不规则的泊松过程，变异性接近真实皮层观测值（CV≈1）。这是理解大脑为什么能同时保持敏感性和稳定性的关键。</p><p class="ref">📄 van Vreeswijk & Sompolinsky (1996), <em>Neural Computation</em></p>`,
+    expl_en: `<p><strong>"E-I balance is the fundamental operating state of the cortex."</strong> van Vreeswijk & Sompolinsky (1996) showed that when excitatory and inhibitory currents roughly cancel, neurons fire as highly irregular Poisson processes, matching cortical variability (CV≈1). This explains how the brain maintains both sensitivity and stability simultaneously.</p><p class="ref">📄 van Vreeswijk & Sompolinsky (1996), <em>Neural Computation</em></p>`
+  },
+  {
+    name_zh: '2. 同步爆发', name_en: '2. Synchronous Bursting',
+    N: 300, M: 50, delayMin: 1, delayMax: 5, noise: 2, eiRatio: 0.8,
+    stdpEnabled: false, stdpRate: 0.01,
+    expl_zh: `<p><strong>"γ 节律（30-80Hz）是注意力与感知绑定的载体"</strong>。当兴奋性连接增强到超过抑制的控制能力，网络进入周期性全局同步——类似深度睡眠的慢波振荡。Fries (2005) 的"通信通过一致性"假说认为：同步的神经群体才能有效地相互通信。</p><p class="ref">📄 Fries (2005), <em>Trends in Cognitive Sciences</em></p>`,
+    expl_en: `<p><strong>"Gamma rhythms (30-80Hz) are the carrier of attention and perceptual binding."</strong> When excitatory connections strengthen beyond inhibitory control, the network enters periodic global synchrony — akin to slow-wave oscillations in deep sleep. Fries (2005) "Communication Through Coherence" hypothesis: only synchronized neural groups can communicate effectively.</p><p class="ref">📄 Fries (2005), <em>Trends in Cognitive Sciences</em></p>`
+  },
+  {
+    name_zh: '3. 多时同步组', name_en: '3. Polychronous Groups',
+    N: 400, M: 40, delayMin: 1, delayMax: 20, noise: 3, eiRatio: 0.8,
+    stdpEnabled: true, stdpRate: 0.02,
+    expl_zh: `<p><strong>"记忆痕迹可能编码在时间而非空间中"</strong>。Izhikevich (2006) 的里程碑发现：由于传导延迟的存在，同一群神经元可以参与多个不同的时间序列模式（polychronous groups），每个模式对应不同的记忆。这意味着大脑的记忆容量远超突触数量——<em>时间本身成为信息载体</em>。该论文被引 >3000 次，是类脑计算的理论基石。</p><p class="ref">📄 Izhikevich (2006), <em>Neural Computation</em> 18(2):245-282 · 被引 >3000</p>`,
+    expl_en: `<p><strong>"Memory traces may be encoded in time, not space."</strong> Izhikevich (2006) landmark discovery: because of conduction delays, the same group of neurons can participate in multiple different temporal sequences (polychronous groups), each corresponding to a different memory. This means the brain's memory capacity far exceeds synapse count — <em>time itself becomes an information carrier</em>. Cited >3000 times, this is a cornerstone of neuromorphic computing.</p><p class="ref">📄 Izhikevich (2006), <em>Neural Computation</em> 18(2):245-282 · Cited >3000</p>`
+  },
+  {
+    name_zh: '4. 神经元雪崩', name_en: '4. Neuronal Avalanches',
+    N: 500, M: 15, delayMin: 1, delayMax: 10, noise: 2, eiRatio: 0.8,
+    stdpEnabled: true, stdpRate: 0.005,
+    expl_zh: `<p><strong>"大脑运作在临界态"</strong>。Beggs & Plenz (2003) 在皮层切片培养中首次发现：神经元群体的发放"雪崩"规模服从幂律分布，且该状态下信息传输量和动态范围同时最大化。这解释了为什么皮层总是处于有序和混沌的边缘——<em>临界态是信息处理的最优工作点</em>。</p><p class="ref">📄 Beggs & Plenz (2003), <em>Journal of Neuroscience</em> 23(35):11167-11177</p>`,
+    expl_en: `<p><strong>"The brain operates at criticality."</strong> Beggs & Plenz (2003) first discovered in cortical slice cultures that neuronal avalanches follow power-law size distributions, and that this state simultaneously maximizes information transmission and dynamic range. This explains why the cortex sits at the edge of order and chaos — <em>criticality is the optimal operating point for information processing</em>.</p><p class="ref">📄 Beggs & Plenz (2003), <em>Journal of Neuroscience</em> 23(35):11167-11177</p>`
+  },
+  {
+    name_zh: '5. 静默状态', name_en: '5. Quiet State',
+    N: 300, M: 10, delayMin: 1, delayMax: 15, noise: 0.5, eiRatio: 0.8,
+    stdpEnabled: false, stdpRate: 0.01,
+    expl_zh: `<p><strong>"稀疏编码：用最少的脉冲传递最多的信息"</strong>。真实皮层神经元的平均发放率仅 0.1-5 Hz，远低于其生理上限。Olshausen & Field (1996) 证明稀疏编码自然涌现出 V1 感受野。低发放率也意味着极低能耗——大脑仅 20W 功耗却能完成超级计算机的任务。</p><p class="ref">📄 Olshausen & Field (1996), <em>Nature</em> 381:607-609</p>`,
+    expl_en: `<p><strong>"Sparse coding: transmit maximum information with minimum spikes."</strong> Real cortical neurons fire at only 0.1-5 Hz on average, far below their physiological limit. Olshausen & Field (1996) showed that sparse coding naturally produces V1-like receptive fields. Low firing rates also mean extreme energy efficiency — the brain uses only ~20W yet outperforms supercomputers.</p><p class="ref">📄 Olshausen & Field (1996), <em>Nature</em> 381:607-609</p>`
+  },
+  {
+    name_zh: '6. 癫痫样活动', name_en: '6. Seizure-like Activity',
+    N: 300, M: 60, delayMin: 1, delayMax: 5, noise: 1, eiRatio: 0.95,
+    stdpEnabled: false, stdpRate: 0.01,
+    expl_zh: `<p><strong>"当抑制失效时——从正常到病理的相变"</strong>。真实癫痫的电生理标志是"发作间期棘波"和发作期的超同步放电。这个模板展示 E/I 失衡如何将健康网络推向病理状态，也解释了为什么许多抗癫痫药物的靶点是增强 GABA 能抑制。</p><p class="ref">📄 Traub & Wong (1982), <em>Science</em> 216:745-747 · GABA 能抑制与癫痫</p>`,
+    expl_en: `<p><strong>"When inhibition fails — the phase transition from normal to pathological."</strong> Epilepsy's electrophysiological hallmarks are interictal spikes and ictal hypersynchronous discharges. This template shows how E/I imbalance pushes a healthy network into a pathological state, and explains why many antiepileptic drugs target GABAergic inhibition enhancement.</p><p class="ref">📄 Traub & Wong (1982), <em>Science</em> 216:745-747</p>`
+  },
+  {
+    name_zh: '7. 自定义', name_en: '7. Custom',
+    N: 300, M: 30, delayMin: 1, delayMax: 20, noise: 5, eiRatio: 0.8,
+    stdpEnabled: true, stdpRate: 0.01,
+    expl_zh: `<p><strong>🔧 自由探索参数空间</strong>。调整右侧滑块观察网络动力学如何变化。尝试：增大噪声→更不规则发放；增大延迟→更丰富的时序模式；降低抑制比例→观察相变。</p>`,
+    expl_en: `<p><strong>🔧 Free exploration mode.</strong> Adjust the sliders on the right to explore network dynamics. Try: increasing noise → more irregular firing; longer delays → richer temporal patterns; reducing inhibition → observe phase transitions.</p>`
+  }
+];
+
+// ======================================================================
+//  3. 仿真引擎 / Simulation Engine
+// ======================================================================
+class SpikingNetwork {
+  constructor(params) {
+    this.applyParams(params);
+  }
+
+  applyParams(p) {
+    // 记录新参数 / Store new parameters
+    this.N = p.N;
+    this.Ne = Math.floor(this.N * p.eiRatio);
+    this.Ni = this.N - this.Ne;
+    this.M = p.M;
+    this.delayMin = p.delayMin;
+    this.delayMax = p.delayMax;
+    this.noise = p.noise;
+    this.stdpEnabled = p.stdpEnabled;
+    this.stdpRate = p.stdpRate;
+    this.maxDelay = this.delayMax;
+    this.time = 0;
+
+    // 神经元类型参数 / Neuron type parameters (Izhikevich 2004)
+    // RS (Regular Spiking) - 兴奋性锥体细胞 80%
+    // FS (Fast Spiking) - 抑制性中间神经元 20%
+    this.a = new Float32Array(this.N);
+    this.b = new Float32Array(this.N);
+    this.c = new Float32Array(this.N);
+    this.d = new Float32Array(this.N);
+
+    // 膜电位 / Membrane potential
+    this.v = new Float32Array(this.N);
+    // 恢复变量 / Recovery variable
+    this.u = new Float32Array(this.N);
+
+    for (let i = 0; i < this.N; i++) {
+      if (i < this.Ne) {
+        // 兴奋性：RS 型 / Excitatory: Regular Spiking
+        this.a[i] = 0.02;
+        this.b[i] = 0.2;
+        this.c[i] = -65 + (Math.random() - 0.5) * 10;  // 参数变化引入异质性
+        this.d[i] = 8 + (Math.random() - 0.5) * 4;
+        this.v[i] = -65 + (Math.random() - 0.5) * 10;
+      } else {
+        // 抑制性：FS 型 / Inhibitory: Fast Spiking
+        this.a[i] = 0.1;
+        this.b[i] = 0.2;
+        this.c[i] = -65;
+        this.d[i] = 2;
+        this.v[i] = -65 + (Math.random() - 0.5) * 5;
+      }
+      this.u[i] = this.b[i] * this.v[i];
+    }
+
+    // 连接表 / Synapse arrays (flat, size N * M)
+    this.synTarget = new Int32Array(this.N * this.M);
+    this.synWeight = new Float32Array(this.N * this.M);
+    this.synDelay  = new Int8Array(this.N * this.M);
+    this.synSign   = new Int8Array(this.N * this.M); // 1=兴奋, -1=抑制
+
+    // 初始化连接 / Initialize connections
+    for (let i = 0; i < this.N; i++) {
+      const isExc = i < this.Ne;
+      for (let j = 0; j < this.M; j++) {
+        const idx = i * this.M + j;
+        // 随机选择目标 / Random target
+        const target = Math.floor(Math.random() * this.N);
+        this.synTarget[idx] = target;
+        // 延迟 1-maxDelay ms / Random delay
+        this.synDelay[idx] = this.delayMin + Math.floor(Math.random() * (this.delayMax - this.delayMin + 1));
+        // 权重：兴奋=正，抑制=负 / Weight sign
+        if (isExc) {
+          this.synSign[idx] = 1;
+          this.synWeight[idx] = Math.random() * 6; // 初始随机权重
+        } else {
+          this.synSign[idx] = -1;
+          this.synWeight[idx] = Math.random() * 6;
+        }
+        // 抑制性连接的权重统一更大（更有效）
+        if (target >= this.Ne) {
+          // 目标也是抑制性 → 减半
+          this.synWeight[idx] *= 0.5;
+        }
+      }
+    }
+
+    // 构建逆向连接表用于高效 STDP / Build reverse connection table for efficient STDP
+    // incomingSynapses[neuron] = [{pre, synIdx}, ...]
+    this.incomingSynapses = new Array(this.N);
+    for (let i = 0; i < this.N; i++) this.incomingSynapses[i] = [];
+    for (let pre = 0; pre < this.N; pre++) {
+      const start = pre * this.M;
+      const end = start + this.M;
+      for (let s = start; s < end; s++) {
+        const target = this.synTarget[s];
+        this.incomingSynapses[target].push({ pre, synIdx: s });
+      }
+    }
+
+    // 环形缓冲用于延迟脉冲投递 / Ring buffer for delayed spike delivery
+    this.bufSize = this.maxDelay + 1;
+    this.delayBuffer = new Array(this.bufSize);
+    for (let d = 0; d < this.bufSize; d++) {
+      this.delayBuffer[d] = new Float32Array(this.N);
+    }
+
+    // STDP 追踪：每个神经元最近发放时间 / Last spike time per neuron (for STDP)
+    this.lastSpikeTime = new Float32Array(this.N);
+    this.lastSpikeTime.fill(-1000);
+
+    // 脉冲历史 / Spike history for raster plot
+    this.spikeHistory = []; // [{neuron, time}]
+    this.maxHistory = 5000;
+
+    // 发放率统计 / Firing rate counters
+    this.spikeCountE = 0;
+    this.spikeCountI = 0;
+    this.rateWindowStart = 0;
+    this.rateHistory = []; // [{time, rateE, rateI}]
+
+    // 群组检测 / Group detection
+    this.stimTime = -10000;
+    this.stimNeurons = new Set();
+    this.spikeTimesAfterStim = []; // [{neuron, timeOffset}]
+    this.detectedGroups = [];
+
+    // 权重矩阵快照 / Weight snapshot (for visualization)
+    this.weightSnapshot = null;
+    this.weightSnapshotTime = -1000;
+  }
+
+  // 执行一步仿真 / Execute one simulation step (dt=1ms)
+  step() {
+    const t = this.time;
+    const bufIdx = t % this.bufSize;
+
+    // 1. 从延迟缓冲读取输入电流 / Read input currents from delay buffer
+    const I_syn = this.delayBuffer[bufIdx];
+
+    // 2. 更新所有神经元 / Update all neurons (Euler integration)
+    for (let i = 0; i < this.N; i++) {
+      // 外部噪声电流 / External noise current
+      const I_noise = this.noise * (Math.random() * 2 - 1);
+
+      // 如果在刺激窗口内，额外电流 / If within stimulation window, add extra current
+      let I_stim = 0;
+      if (t - this.stimTime < 30 && t >= this.stimTime) {
+        if (this.stimNeurons.has(i)) {
+          I_stim = 20; // 强刺激脉冲 / Strong stimulation pulse
+        }
+      }
+
+      const I_total = I_syn[i] + I_noise + I_stim;
+      // Izhikevich 神经元模型
+      this.v[i] += 0.04 * this.v[i] * this.v[i] + 5 * this.v[i] + 140 - this.u[i] + I_total;
+      this.u[i] += this.a[i] * (this.b[i] * this.v[i] - this.u[i]);
+    }
+
+    // 清除已读的缓冲槽 / Clear the buffer slot we just read
+    this.delayBuffer[bufIdx].fill(0);
+
+    // 3. 检测发放 / Check for spikes
+    const spikesThisStep = [];
+    for (let i = 0; i < this.N; i++) {
+      if (this.v[i] >= 30) {
+        // 发放！ / Spike!
+        this.v[i] = this.c[i];
+        this.u[i] += this.d[i];
+
+        spikesThisStep.push(i);
+        this.lastSpikeTime[i] = t;
+
+        // 统计 / Stats
+        if (i < this.Ne) this.spikeCountE++;
+        else this.spikeCountI++;
+
+        // 记录脉冲历史 / Record spike history
+        if (this.spikeHistory.length >= this.maxHistory) {
+          this.spikeHistory.shift();
+        }
+        this.spikeHistory.push({ neuron: i, time: t });
+
+        // 群组检测：记录刺激后的发放 / Group detection: record post-stimulus spikes
+        if (t - this.stimTime >= 0 && t - this.stimTime < 100) {
+          this.spikeTimesAfterStim.push({ neuron: i, timeOffset: t - this.stimTime });
+        }
+      }
+    }
+
+    // 4. 传播脉冲（带延迟）/ Propagate spikes with delays
+    for (const srcNeuron of spikesThisStep) {
+      const srcStart = srcNeuron * this.M;
+      const srcEnd = srcStart + this.M;
+
+      for (let s = srcStart; s < srcEnd; s++) {
+        const target = this.synTarget[s];
+        const weight = this.synWeight[s];
+        const delay = this.synDelay[s];
+        const arrivalT = (t + delay) % this.bufSize;
+
+        // 将权重加到目标神经元的延迟缓冲中 (兴奋=正, 抑制=负)
+        this.delayBuffer[arrivalT][target] += weight * this.synSign[s];
+
+        // STDP LTD: post-before-pre → 突触抑制 (反因果, 仅兴奋性突触)
+        if (this.stdpEnabled && this.synSign[s] === 1) {
+          const postLastT = this.lastSpikeTime[target];
+          if (postLastT >= 0) {
+            const dt = t - postLastT;
+            if (dt > 0 && dt < 80) {
+              // 突触后最近发放过 → 现在突触前发放 → LTD (反因果)
+              const dw = -this.stdpRate * Math.exp(-dt / 20);
+              this.synWeight[s] = Math.max(0.01, Math.min(10, this.synWeight[s] + dw));
+            }
+          }
+        }
+      }
+    }
+
+    // 5. STDP LTP: pre-before-post → 突触增强 (因果)
+    // 使用逆向连接表: O(spikes × avg_incoming) 而非 O(spikes × N × M)
+    if (this.stdpEnabled) {
+      for (const postNeuron of spikesThisStep) {
+        const incoming = this.incomingSynapses[postNeuron];
+        for (const inc of incoming) {
+          const preLastT = this.lastSpikeTime[inc.pre];
+          const dt = t - preLastT;
+          if (dt > 0 && dt < 80 && this.synSign[inc.synIdx] === 1) {
+            const dw = this.stdpRate * Math.exp(-dt / 20);
+            this.synWeight[inc.synIdx] = Math.min(10, this.synWeight[inc.synIdx] + dw);
+          }
+        }
+      }
+    }
+
+    // 6. 更新发放率历史 / Update rate history
+    if (t - this.rateWindowStart >= 50) {
+      const dtSec = (t - this.rateWindowStart) / 1000;
+      const rateE = this.spikeCountE / this.Ne / dtSec;
+      const rateI = this.spikeCountI / this.Ni / dtSec;
+      this.rateHistory.push({ time: t, rateE, rateI });
+      if (this.rateHistory.length > 400) this.rateHistory.shift();
+      this.spikeCountE = 0;
+      this.spikeCountI = 0;
+      this.rateWindowStart = t;
+    }
+
+    // 7. 定期更新权重快照 (每 500ms) / Periodic weight snapshot
+    if (t - this.weightSnapshotTime > 500) {
+      this.takeWeightSnapshot();
+      this.weightSnapshotTime = t;
+    }
+
+    this.time++;
+    return spikesThisStep.length;
+  }
+
+  // 施加刺激 / Apply stimulation to a random group of neurons
+  stimulate() {
+    // 随机选择一组兴奋性神经元 / Select a random group of excitatory neurons
+    const groupSize = Math.floor(this.Ne * 0.15); // 15% of exc. neurons
+    this.stimNeurons = new Set();
+    while (this.stimNeurons.size < groupSize) {
+      this.stimNeurons.add(Math.floor(Math.random() * this.Ne));
+    }
+    this.stimTime = this.time;
+    this.spikeTimesAfterStim = []; // 开始记录发放时间
+    this._groupsChecked = false;   // 标记待检测 / Mark pending detection
+  }
+
+  // 检测多时同步组 / Detect polychronous groups from post-stimulus spikes
+  detectGroups() {
+    if (this.spikeTimesAfterStim.length < 8) {
+      return []; // 脉冲不够 / Not enough spikes
+    }
+
+    // 按神经元分组 / Group spikes by neuron
+    const neuronSpikes = {}; // neuron -> [timeOffsets]
+    for (const s of this.spikeTimesAfterStim) {
+      if (!neuronSpikes[s.neuron]) neuronSpikes[s.neuron] = [];
+      neuronSpikes[s.neuron].push(s.timeOffset);
+    }
+
+    // 取每个神经元的中位发放时间 / Median spike time per neuron
+    const neurons = Object.keys(neuronSpikes).map(Number);
+    if (neurons.length < 5) return [];
+
+    // 构建时序矩阵：神经元按中位时间排序 / Build temporal ordering
+    const neuronData = neurons.map(n => ({
+      neuron: n,
+      medianTime: median(neuronSpikes[n]),
+      times: neuronSpikes[n]
+    }));
+    neuronData.sort((a, b) => a.medianTime - b.medianTime);
+
+    // 使用简单的时间间隔聚类 / Simple temporal gap clustering
+    // 如果两个相邻神经元间隔 > 15ms → 群组分界线
+    const groups = [];
+    let currentGroup = [neuronData[0]];
+    for (let i = 1; i < neuronData.length; i++) {
+      const gap = neuronData[i].medianTime - neuronData[i - 1].medianTime;
+      if (gap > 20) {
+        // 断裂 / Split
+        if (currentGroup.length >= 3) {
+          groups.push([...currentGroup]);
+        }
+        currentGroup = [neuronData[i]];
+      } else {
+        currentGroup.push(neuronData[i]);
+      }
+    }
+    if (currentGroup.length >= 3) {
+      groups.push(currentGroup);
+    }
+
+    // 转换为群组格式 / Convert to group format
+    return groups.map((g, idx) => ({
+      id: idx,
+      neurons: g.map(d => d.neuron),
+      offsets: g.map(d => Math.round(d.medianTime)),
+      delays: g.map((d, i) => i > 0 ? Math.round(d.medianTime - g[i-1].medianTime) : 0)
+    }));
+  }
+
+  // 权重矩阵快照 (取子采样) / Take weight matrix snapshot (subsampled)
+  takeWeightSnapshot() {
+    const sampleSize = Math.min(this.N, 80);
+    const step = Math.max(1, Math.floor(this.N / sampleSize));
+    const sN = Math.floor(this.N / step);
+    const mat = new Float32Array(sN * sN);
+
+    // 构建矩阵：mat[target][source] = 平均权重
+    for (let src = 0; src < this.N; src++) {
+      const srcStart = src * this.M;
+      const srcEnd = srcStart + this.M;
+      const srcIdx = Math.floor(src / step);
+      if (srcIdx >= sN) continue;
+
+      for (let s = srcStart; s < srcEnd; s++) {
+        const tgt = this.synTarget[s];
+        const tgtIdx = Math.floor(tgt / step);
+        if (tgtIdx >= sN) continue;
+        const w = this.synWeight[s] * this.synSign[s];
+        mat[tgtIdx * sN + srcIdx] += w;
+      }
+    }
+
+    // 平均 / Average
+    for (let i = 0; i < sN * sN; i++) {
+      mat[i] /= step;
+    }
+
+    this.weightSnapshot = { mat, size: sN };
+  }
+
+  // 重置 / Reset with same params
+  reset() {
+    const p = {
+      N: this.N, M: this.M,
+      delayMin: this.delayMin, delayMax: this.delayMax,
+      noise: this.noise, eiRatio: this.Ne / this.N,
+      stdpEnabled: this.stdpEnabled, stdpRate: this.stdpRate
+    };
+    this.applyParams(p);
+  }
+}
+
+// 中位数辅助函数 / Median helper
+function median(arr) {
+  const sorted = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+// ======================================================================
+//  4. 可视化渲染器 / Visualization Renderers
+// ======================================================================
+
+// 4a. 脉冲栅格图 / Spike Raster Plot
+class RasterRenderer {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.pixelsPerMs = 1.5; // 水平缩放
+    this.windowMs = 600;
+    this.resize();
+  }
+
+  resize() {
+    const rect = this.canvas.parentElement.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    this.width = rect.width;
+    this.height = rect.height;
+    this.canvas.width = this.width * dpr;
+    this.canvas.height = this.height * dpr;
+    this.canvas.style.width = this.width + 'px';
+    this.canvas.style.height = this.height + 'px';
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.windowMs = Math.max(200, this.width / this.pixelsPerMs);
+  }
+
+  render(network, groups) {
+    const ctx = this.ctx;
+    const w = this.width;
+    const h = this.height;
+    const N = network.N;
+
+    // 背景 / Background
+    ctx.fillStyle = '#0a0a10';
+    ctx.fillRect(0, 0, w, h);
+
+    // 网格线 / Grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < N; i += 20) {
+      const y = 12 + (i / N) * (h - 24);
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+
+    // 神经元类型分隔线 / Neuron type divider
+    const dividerY = 12 + (network.Ne / N) * (h - 24);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, dividerY);
+    ctx.lineTo(w, dividerY);
+    ctx.stroke();
+
+    // 标签 / Labels
+    ctx.fillStyle = '#4ade80';
+    ctx.font = '9px monospace';
+    ctx.fillText('E', 4, 12 + (network.Ne / 2 / N) * (h - 24));
+    ctx.fillStyle = '#f87171';
+    ctx.fillText('I', 4, 12 + ((network.Ne + network.Ni / 2) / N) * (h - 24));
+
+    // 建立群组颜色映射 / Build group color map
+    const groupColors = ['#4ade80','#60a5fa','#fbbf24','#c084fc','#f87171','#34d399','#f472b6','#818cf8'];
+    const neuronGroup = new Map();
+    if (groups) {
+      groups.forEach((g, gi) => {
+        g.neurons.forEach(n => {
+          if (!neuronGroup.has(n)) neuronGroup.set(n, gi);
+        });
+      });
+    }
+
+    // 刺激标记 / Stimulus marker
+    const stimX = w - ((network.time - network.stimTime) * this.pixelsPerMs);
+    if (network.time - network.stimTime < this.windowMs && network.stimTime > 0) {
+      ctx.strokeStyle = 'rgba(251,191,36,0.4)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(stimX, 0);
+      ctx.lineTo(stimX, h);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = '8px monospace';
+      ctx.fillText('STIM', stimX + 3, 10);
+    }
+
+    // 绘制脉冲 / Draw spikes
+    const timeWindow = this.windowMs;
+    const tStart = network.time - timeWindow;
+
+    for (const spike of network.spikeHistory) {
+      if (spike.time < tStart) continue;
+      const x = (spike.time - tStart) * this.pixelsPerMs;
+      if (x < 0 || x > w) continue;
+      const y = 12 + (spike.neuron / N) * (h - 24);
+
+      const gi = neuronGroup.get(spike.neuron);
+      ctx.fillStyle = gi !== undefined ? groupColors[gi % groupColors.length] :
+        (spike.neuron < network.Ne ? '#4ade80' : '#f87171');
+      ctx.globalAlpha = gi !== undefined ? 0.9 : 0.5;
+      ctx.fillRect(x - 1, y - 1, 2, 2);
+    }
+    ctx.globalAlpha = 1;
+
+    // 时间轴刻度 / Time axis ticks
+    ctx.fillStyle = '#666';
+    ctx.font = '9px monospace';
+    for (let ms = Math.ceil(tStart / 100) * 100; ms <= network.time; ms += 100) {
+      const x = (ms - tStart) * this.pixelsPerMs;
+      if (x >= 0 && x <= w) {
+        ctx.fillText(ms + 'ms', x + 2, h - 4);
+      }
+    }
+  }
+}
+
+// 4b. 发放率折线图 / Firing Rate Line Plot
+class RateRenderer {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.resize();
+  }
+
+  resize() {
+    const rect = this.canvas.parentElement.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    this.width = rect.width;
+    this.height = rect.height;
+    this.canvas.width = this.width * dpr;
+    this.canvas.height = this.height * dpr;
+    this.canvas.style.width = this.width + 'px';
+    this.canvas.style.height = this.height + 'px';
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  render(network) {
+    const ctx = this.ctx;
+    const w = this.width;
+    const h = this.height;
+    const pad = { top: 18, right: 10, bottom: 20, left: 35 };
+
+    ctx.fillStyle = '#0a0a10';
+    ctx.fillRect(0, 0, w, h);
+
+    const history = network.rateHistory;
+    if (history.length < 2) return;
+
+    const plotW = w - pad.left - pad.right;
+    const plotH = h - pad.top - pad.bottom;
+
+    // 找最大发放率 / Find max rate for scaling
+    let maxRate = 5;
+    for (const r of history) {
+      maxRate = Math.max(maxRate, r.rateE, r.rateI);
+    }
+    maxRate = Math.ceil(maxRate / 5) * 5 + 5;
+
+    // Y轴标签 / Y axis labels
+    ctx.fillStyle = '#888';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'right';
+    for (let r = 0; r <= maxRate; r += Math.max(1, Math.floor(maxRate / 4))) {
+      const y = pad.top + plotH - (r / maxRate) * plotH;
+      ctx.fillText(Math.round(r) + '', pad.left - 5, y + 3);
+      ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+      ctx.beginPath();
+      ctx.moveTo(pad.left, y);
+      ctx.lineTo(w - pad.right, y);
+      ctx.stroke();
+    }
+    ctx.textAlign = 'start';
+
+    // 时间范围 / Time range
+    const tMin = history[0].time;
+    const tMax = history[history.length - 1].time;
+    const tRange = Math.max(1, tMax - tMin);
+
+    // 绘制 E 发放率曲线 / Draw E rate curve
+    ctx.strokeStyle = '#4ade80';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    let first = true;
+    for (let i = 0; i < history.length; i++) {
+      const x = pad.left + ((history[i].time - tMin) / tRange) * plotW;
+      const y = pad.top + plotH - (history[i].rateE / maxRate) * plotH;
+      if (first) { ctx.moveTo(x, y); first = false; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // 绘制 I 发放率曲线 / Draw I rate curve
+    ctx.strokeStyle = '#f87171';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    first = true;
+    for (let i = 0; i < history.length; i++) {
+      const x = pad.left + ((history[i].time - tMin) / tRange) * plotW;
+      const y = pad.top + plotH - (history[i].rateI / maxRate) * plotH;
+      if (first) { ctx.moveTo(x, y); first = false; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // 图例 / Legend
+    ctx.fillStyle = '#4ade80';
+    ctx.fillRect(pad.left + 5, 6, 8, 8);
+    ctx.fillStyle = '#888';
+    ctx.font = '9px monospace';
+    ctx.fillText('E (Exc)', pad.left + 16, 14);
+
+    ctx.fillStyle = '#f87171';
+    ctx.fillRect(pad.left + 80, 6, 8, 8);
+    ctx.fillStyle = '#888';
+    ctx.fillText('I (Inh)', pad.left + 91, 14);
+  }
+}
+
+// 4c. 权重矩阵热力图 / Weight Matrix Heatmap
+class WeightRenderer {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.resize();
+  }
+
+  resize() {
+    const rect = this.canvas.parentElement.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    this.width = rect.width;
+    this.height = rect.height;
+    this.canvas.width = this.width * dpr;
+    this.canvas.height = this.height * dpr;
+    this.canvas.style.width = this.width + 'px';
+    this.canvas.style.height = this.height + 'px';
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  render(network) {
+    const ctx = this.ctx;
+    const w = this.width;
+    const h = this.height;
+
+    ctx.fillStyle = '#0a0a10';
+    ctx.fillRect(0, 0, w, h);
+
+    if (!network.weightSnapshot) {
+      network.takeWeightSnapshot();
+      network.weightSnapshotTime = network.time;
+    }
+
+    const snap = network.weightSnapshot;
+    if (!snap) return;
+
+    const size = snap.size;
+    const cellW = w / size;
+    const cellH = h / size;
+
+    // 绘制热力图 / Draw heatmap
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const val = snap.mat[y * size + x];
+        // 蓝=抑制(负), 红=兴奋(正), 黑=零
+        let r = 0, g = 0, b = 0;
+        if (val > 0) {
+          // 兴奋：绿→黄 / Excitatory: green → yellow
+          const intensity = Math.min(1, val / 5);
+          r = Math.floor(intensity * 200);
+          g = Math.floor(60 + intensity * 140);
+          b = 20;
+        } else if (val < 0) {
+          // 抑制：蓝→紫 / Inhibitory: blue → purple
+          const intensity = Math.min(1, -val / 5);
+          r = Math.floor(intensity * 100);
+          g = 10;
+          b = Math.floor(60 + intensity * 180);
+        } else {
+          r = 15; g = 15; b = 25;
+        }
+
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(x * cellW, y * cellH, Math.ceil(cellW), Math.ceil(cellH));
+      }
+    }
+
+    // 分隔线 / Separator line between E and I
+    const eFrac = network.Ne / network.N;
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1;
+    // 水平分隔
+    ctx.beginPath();
+    ctx.moveTo(0, eFrac * h);
+    ctx.lineTo(w, eFrac * h);
+    ctx.stroke();
+    // 垂直分隔
+    ctx.beginPath();
+    ctx.moveTo(eFrac * w, 0);
+    ctx.lineTo(eFrac * w, h);
+    ctx.stroke();
+
+    // 标签 / Labels
+    ctx.fillStyle = '#888';
+    ctx.font = '9px monospace';
+    ctx.fillText('pre E/I', 3, h - 3);
+    ctx.fillText('→ post', 3, 10);
+    ctx.fillText('E', eFrac * w - 14, 9);
+    ctx.fillText('I', w - 14, 9);
+  }
+}
+
+// ======================================================================
+//  5. 应用主控制器 / Application Controller
+// ======================================================================
+class App {
+  constructor() {
+    this.network = null;
+    this.running = false;
+    this.paused = false;
+    this.speed = 3; // 每帧仿真步数 / Steps per frame
+    this.currentPreset = 0;
+    this.groups = [];
+    this.explainPinned = false;
+    this.explainTimer = null;
+
+    // 初始化渲染器 / Init renderers
+    this.raster = new RasterRenderer(document.getElementById('rasterCanvas'));
+    this.rate = new RateRenderer(document.getElementById('rateCanvas'));
+    this.weight = new WeightRenderer(document.getElementById('weightCanvas'));
+
+    // 绑定 UI / Bind UI
+    this.bindUI();
+    // 初始化 i18n / Init i18n
+    updateLang();
+    // 填充模板下拉菜单 / Populate template select
+    updateTemplateSelect();
+    // 创建网络 / Create network
+    this.switchTemplate(0);
+    // 开始渲染循环 / Start render loop
+    this.renderLoop();
+  }
+
+  bindUI() {
+    // 播放/暂停/单步/重置 / Play/Pause/Step/Reset
+    document.getElementById('btnPlay').addEventListener('click', () => this.play());
+    document.getElementById('btnPause').addEventListener('click', () => this.pause());
+    document.getElementById('btnStep').addEventListener('click', () => this.stepOnce());
+    document.getElementById('btnReset').addEventListener('click', () => this.reset());
+    document.getElementById('btnStim').addEventListener('click', () => this.stimulate());
+
+    // 速度选择 / Speed selection
+    document.getElementById('speedGroup').addEventListener('click', (e) => {
+      if (e.target.dataset.speed) {
+        this.speed = parseInt(e.target.dataset.speed);
+        document.querySelectorAll('#speedGroup .btn').forEach(b => b.classList.remove('sel'));
+        e.target.classList.add('sel');
+      }
+    });
+
+    // 模板选择 / Template selection
+    document.getElementById('templateSelect').addEventListener('change', (e) => {
+      this.switchTemplate(parseInt(e.target.value));
+    });
+
+    // 自定义参数 / Custom parameters
+    const paramIds = ['paramN', 'paramM', 'paramDelayMax', 'paramNoise', 'paramEI', 'paramSTDPRate'];
+    const valIds = ['valN', 'valM', 'valDelay', 'valNoise', 'valEI', 'valSTDPRate'];
+    const valFormatters = [
+      v => v, v => v,
+      v => '1-' + v, v => v,
+      v => v, v => parseFloat(v).toFixed(3)
+    ];
+
+    paramIds.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('input', () => {
+        const val = el.type === 'checkbox' ? el.checked : el.value;
+        if (valIds[i]) {
+          const displayVal = el.type === 'checkbox' ? '' : valFormatters[i](val);
+          document.getElementById(valIds[i]).textContent = displayVal;
+        }
+        if (this.currentPreset === 6) { // 只在自定义模式重新初始化 / Only reinit in custom mode
+          this.reinitFromCustomParams();
+        }
+      });
+    });
+
+    // 解释面板 / Explanation panel
+    document.getElementById('btnPin').addEventListener('click', () => {
+      this.explainPinned = !this.explainPinned;
+      const btn = document.getElementById('btnPin');
+      btn.textContent = this.explainPinned ? '📌 已固定' : '📌 固定';
+      if (lang === 'en') {
+        btn.textContent = this.explainPinned ? '📌 Pinned' : '📌 Pin';
+      }
+      if (!this.explainPinned) {
+        this.startExplainFadeout();
+      }
+    });
+    document.getElementById('btnCloseExp').addEventListener('click', () => {
+      document.getElementById('explainPanel').style.opacity = '0';
+      this.explainPinned = false;
+    });
+
+    // 语言切换 / Language toggle
+    document.getElementById('langToggle').addEventListener('click', () => {
+      lang = lang === 'zh' ? 'en' : 'zh';
+      updateLang();
+    });
+
+    // 键盘快捷键 / Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+      switch (e.code) {
+        case 'Space': e.preventDefault(); this.running ? this.pause() : this.play(); break;
+        case 'KeyS': e.preventDefault(); this.stimulate(); break;
+        case 'KeyR': e.preventDefault(); this.reset(); break;
+        case 'ArrowRight': e.preventDefault(); this.stepOnce(); break;
+        case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6':
+          e.preventDefault(); this.switchTemplate(parseInt(e.code[e.code.length-1]) - 1); break;
+        case 'Digit0': e.preventDefault(); this.switchTemplate(6); break;
+      }
+    });
+
+    // 窗口大小调整 / Window resize
+    window.addEventListener('resize', () => {
+      this.raster.resize();
+      this.rate.resize();
+      this.weight.resize();
+    });
+  }
+
+  switchTemplate(idx) {
+    this.currentPreset = idx;
+    const preset = PRESETS[idx];
+    document.getElementById('templateSelect').value = idx;
+    this.network = new SpikingNetwork(preset);
+    this.groups = [];
+    this.running = false;
+    this.paused = false;
+
+    // 显示/隐藏自定义参数面板 / Show/hide custom params panel
+    const paramsPanel = document.getElementById('paramsPanel');
+    if (idx === 6) {
+      paramsPanel.classList.remove('hidden');
+      this.syncParamsToPreset(preset);
+    } else {
+      paramsPanel.classList.add('hidden');
+    }
+
+    // 显示解释 / Show explanation
+    updateExplanation();
+    document.getElementById('explainPanel').style.opacity = '1';
+    if (!this.explainPinned) {
+      this.startExplainFadeout();
+    }
+
+    // Toast
+    this.showToast(t('templateChanged') + (lang === 'zh' ? preset.name_zh : preset.name_en));
+    this.updateGroupsPanel();
+    // 自动开始仿真 / Auto-start
+    this.running = true;
+  }
+
+  syncParamsToPreset(preset) {
+    document.getElementById('paramN').value = preset.N;
+    document.getElementById('valN').textContent = preset.N;
+    document.getElementById('paramM').value = preset.M;
+    document.getElementById('valM').textContent = preset.M;
+    document.getElementById('paramDelayMax').value = preset.delayMax;
+    document.getElementById('valDelay').textContent = preset.delayMin + '-' + preset.delayMax;
+    document.getElementById('paramNoise').value = preset.noise;
+    document.getElementById('valNoise').textContent = preset.noise;
+    document.getElementById('paramEI').value = preset.eiRatio * 100;
+    document.getElementById('valEI').textContent = Math.round(preset.eiRatio * 100);
+    document.getElementById('paramSTDP').checked = preset.stdpEnabled;
+    document.getElementById('paramSTDPRate').value = preset.stdpRate;
+    document.getElementById('valSTDPRate').textContent = preset.stdpRate.toFixed(3);
+  }
+
+  reinitFromCustomParams() {
+    const p = {
+      N: parseInt(document.getElementById('paramN').value),
+      M: parseInt(document.getElementById('paramM').value),
+      delayMin: 1,
+      delayMax: parseInt(document.getElementById('paramDelayMax').value),
+      noise: parseFloat(document.getElementById('paramNoise').value),
+      eiRatio: parseInt(document.getElementById('paramEI').value) / 100,
+      stdpEnabled: document.getElementById('paramSTDP').checked,
+      stdpRate: parseFloat(document.getElementById('paramSTDPRate').value)
+    };
+    this.network.applyParams(p);
+    this.groups = [];
+    this.updateGroupsPanel();
+
+    // 更新延迟显示 / Update delay display
+    document.getElementById('valDelay').textContent = '1-' + p.delayMax;
+  }
+
+  play() {
+    this.running = true;
+    this.paused = false;
+  }
+
+  pause() {
+    this.running = false;
+    this.paused = true;
+    this.showToast(t('simPaused'));
+  }
+
+  stepOnce() {
+    this.paused = true;
+    this.running = false;
+    this.network.step();
+    // 检测群组 / Detect groups (使用标志位避免漏检)
+    if (this.network.time - this.network.stimTime >= 100 && !this.network._groupsChecked) {
+      this.detectAndUpdateGroups();
+      this.network._groupsChecked = true;
+    }
+  }
+
+  reset() {
+    const preset = PRESETS[this.currentPreset];
+    if (this.currentPreset === 6) {
+      this.reinitFromCustomParams();
+    } else {
+      this.network = new SpikingNetwork(preset);
+    }
+    this.groups = [];
+    this.running = false;
+    this.paused = false;
+    this.updateGroupsPanel();
+  }
+
+  stimulate() {
+    this.network.stimulate();
+    this.showToast(t('stimApplied'));
+    this.running = true;
+    this.paused = false;
+  }
+
+  detectAndUpdateGroups() {
+    const newGroups = this.network.detectGroups();
+    if (newGroups.length > 0) {
+      this.groups = newGroups;
+      this.updateGroupsPanel();
+    }
+  }
+
+  updateGroupsPanel() {
+    const container = document.getElementById('groupsContent');
+    if (this.groups.length === 0) {
+      container.innerHTML = '<span class="no-groups">' + t('noGroups') + '</span>';
+    } else {
+      const groupColors = ['#4ade80','#60a5fa','#fbbf24','#c084fc','#f87171','#34d399','#f472b6','#818cf8'];
+      container.innerHTML = this.groups.map((g, i) => {
+        const neuronList = g.neurons.slice(0, 8).map(n => 'n' + n).join('→');
+        const delayList = g.offsets.slice(0, 8).map(o => '+' + o + 'ms').join(' ');
+        const more = g.neurons.length > 8 ? ' ...(+' + (g.neurons.length - 8) + ')' : '';
+        return `<div class="group-entry">
+          <span class="group-dot" style="background:${groupColors[i % groupColors.length]}"></span>
+          <span>组${String.fromCharCode(65+i)}: ${neuronList}${more}<br><small style="color:#888">${delayList}</small></span>
+        </div>`;
+      }).join('');
+    }
+  }
+
+  showToast(msg) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+  }
+
+  startExplainFadeout() {
+    clearTimeout(this.explainTimer);
+    // 不淡出，只是给用户时间看 / Don't completely fade, just dim after delay
+    this.explainTimer = setTimeout(() => {
+      if (!this.explainPinned) {
+        document.getElementById('explainPanel').classList.add('fading');
+      }
+    }, 5000);
+  }
+
+  renderLoop() {
+    // 自动检测并修正画布尺寸 / Auto-detect and fix canvas dimensions
+    if (this.raster.width === 0 || this.rate.width === 0 || this.weight.width === 0) {
+      this.raster.resize();
+      this.rate.resize();
+      this.weight.resize();
+    }
+
+    // 仿真步骤 / Simulation steps
+    if (this.running && !this.paused) {
+      for (let s = 0; s < this.speed; s++) {
+        this.network.step();
+      }
+      // 刺激后检测群组 / Detect groups after stimulation window
+      if (this.network.time - this.network.stimTime >= 100 && !this.network._groupsChecked) {
+        this.detectAndUpdateGroups();
+        this.network._groupsChecked = true;
+      }
+    }
+
+    // 更新仿真时间显示 / Update sim time display
+    document.getElementById('simInfo').textContent = 't=' + this.network.time + 'ms';
+
+    // 渲染 / Render
+    this.raster.render(this.network, this.groups);
+    this.rate.render(this.network);
+    this.weight.render(this.network);
+
+    requestAnimationFrame(() => this.renderLoop());
+  }
+}
+
+// ======================================================================
+//  6. 辅助函数 / Helper Functions
+// ======================================================================
+
+function updateTemplateSelect() {
+  const select = document.getElementById('templateSelect');
+  select.innerHTML = PRESETS.map((p, i) => {
+    const name = lang === 'zh' ? p.name_zh : p.name_en;
+    return `<option value="${i}">${name}</option>`;
+  }).join('');
+}
+
+function updateExplanation() {
+  const container = document.getElementById('explainContent');
+  const preset = PRESETS[window._app ? window._app.currentPreset : 0];
+  container.innerHTML = lang === 'zh' ? preset.expl_zh : preset.expl_en;
+  document.getElementById('explainPanel').classList.remove('fading');
+  document.getElementById('explainPanel').style.opacity = '1';
+}
+
+// ======================================================================
+//  7. 启动 / Bootstrap
+// ======================================================================
+window.addEventListener('DOMContentLoaded', () => {
+  window._app = new App();
+});
+</script>
+</body>
+</html>
