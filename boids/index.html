@@ -1,0 +1,1188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boids Flocking — 鸟群涌现模拟</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0a0a18;
+  --surface: #12122a;
+  --border: #252545;
+  --text: #e0e0f0;
+  --text-dim: #8888b0;
+  --accent: #22d3ee;
+  --accent-glow: rgba(34, 211, 238, 0.35);
+  --accent2: #a78bfa;
+  --danger: #f87171;
+  --danger-glow: rgba(248, 113, 113, 0.3);
+  --info: #60a5fa;
+  --canvas-bg: #050510;
+  --radius: 8px;
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  user-select: none;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.header h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.header .subtitle {
+  font-size: 1rem;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.lang-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: var(--font);
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.lang-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.main-container {
+  display: flex;
+  gap: 20px;
+  width: 100%;
+  max-width: 1200px;
+  flex: 1;
+}
+
+.canvas-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  min-height: 500px;
+  position: relative;
+}
+
+canvas {
+  display: block;
+  cursor: crosshair;
+}
+
+.sidebar {
+  width: 290px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-height: calc(100vh - 180px);
+}
+
+.sidebar h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.rules-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.rules-list li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.rules-list .rule-num {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.param-group {
+  margin-bottom: 10px;
+}
+.param-group label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin-bottom: 3px;
+}
+.param-val {
+  color: var(--accent);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+.param-group input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  height: 4px;
+}
+
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.legend-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.legend-dot.boid { border-radius: 2px; }
+.legend-dot.pred { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.5); }
+.legend-dot.radius-vis {
+  background: transparent;
+  border: 1.5px dashed rgba(34,211,238,0.35);
+  border-radius: 50%;
+}
+.legend-dot.trail { background: rgba(34,211,238,0.2); }
+.legend-swatch {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+.legend-swatch span {
+  width: 13px;
+  height: 13px;
+  border-radius: 2px;
+}
+
+.controls-bar {
+  width: 100%;
+  max-width: 1200px;
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-family: var(--font);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--accent); background: #0e2a30; }
+.btn:active { transform: scale(0.97); }
+.btn.primary {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.btn.primary:hover { background: #38ddf8; }
+.btn.primary.paused {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(34,211,238,0.1);
+}
+.btn.active.predator {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: rgba(239,68,68,0.1);
+}
+.btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+.speed-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+.speed-group label {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.speed-group input[type="range"] {
+  width: 100px;
+  accent-color: var(--accent);
+}
+
+.stats {
+  display: flex;
+  gap: 18px;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+.stats strong { color: var(--accent); font-weight: 600; }
+
+.footer {
+  margin-top: 16px;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+.footer .divider { margin: 0 12px; opacity: 0.3; }
+
+@media (max-width: 900px) {
+  .main-container { flex-direction: column; }
+  .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; gap: 14px; padding: 14px; max-height: none; }
+  .sidebar > div { flex: 1; min-width: 200px; }
+  .sidebar h3 { font-size: 0.8rem; }
+  .sidebar .rules-list li, .sidebar .legend-item { font-size: 0.76rem; }
+  .canvas-panel { min-height: 360px; }
+  .controls-bar { justify-content: center; }
+  .speed-group { margin-left: 0; }
+}
+@media (max-width: 500px) {
+  .header h1 { font-size: 1.2rem; }
+  .sidebar { flex-direction: column; }
+  .btn { padding: 7px 12px; font-size: 0.8rem; }
+  .stats { gap: 10px; font-size: 0.75rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div style="text-align:center">
+    <h1 data-i18n="title">Boids Flocking Simulation</h1>
+    <div class="subtitle" data-i18n="subtitle">鸟群涌现模拟 — Craig Reynolds 1986</div>
+  </div>
+  <button class="lang-btn" id="langToggle" data-i18n="langLabel">English</button>
+</div>
+
+<div class="main-container" id="mainContainer">
+  <div class="canvas-panel" id="canvasPanel">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div class="sidebar" id="sidebar">
+    <div>
+      <h3 data-i18n="rulesTitle">三条规则</h3>
+      <ul class="rules-list" data-i18n-list="rules">
+        <li><span class="rule-num">1</span><span data-i18n="rule1_sep">分离：近邻太近 → 转向远离，避免碰撞</span></li>
+        <li><span class="rule-num">2</span><span data-i18n="rule2_ali">对齐：匹配近邻平均航向 → 朝同一方向飞</span></li>
+        <li><span class="rule-num">3</span><span data-i18n="rule3_coh">凝聚：朝近邻平均位置靠拢 → 聚集成群</span></li>
+      </ul>
+    </div>
+
+    <div>
+      <h3 data-i18n="paramsTitle">参数调节</h3>
+      <div class="param-group">
+        <label><span data-i18n="paramSep">分离强度</span><span class="param-val" id="sepVal">1.5</span></label>
+        <input type="range" id="sepSlider" min="5" max="30" value="15" step="1">
+      </div>
+      <div class="param-group">
+        <label><span data-i18n="paramAli">对齐强度</span><span class="param-val" id="aliVal">1.0</span></label>
+        <input type="range" id="aliSlider" min="0" max="25" value="10" step="1">
+      </div>
+      <div class="param-group">
+        <label><span data-i18n="paramCoh">凝聚强度</span><span class="param-val" id="cohVal">1.0</span></label>
+        <input type="range" id="cohSlider" min="0" max="25" value="10" step="1">
+      </div>
+      <div class="param-group">
+        <label><span data-i18n="paramRadius">感知半径</span><span class="param-val" id="radiusVal">55</span></label>
+        <input type="range" id="radiusSlider" min="30" max="120" value="55" step="5">
+      </div>
+      <div class="param-group">
+        <label><span data-i18n="paramMaxSpeed">最大速度</span><span class="param-val" id="maxSpeedVal">3.0</span></label>
+        <input type="range" id="maxSpeedSlider" min="10" max="60" value="30" step="1">
+      </div>
+      <div class="param-group">
+        <label><span data-i18n="paramMaxForce">转向力度</span><span class="param-val" id="maxForceVal">0.15</span></label>
+        <input type="range" id="maxForceSlider" min="5" max="35" value="15" step="1">
+      </div>
+    </div>
+
+    <div>
+      <h3 data-i18n="legendTitle">图例</h3>
+      <div class="legend">
+        <div class="legend-item">
+          <span class="legend-dot boid" style="background:#22d3ee"></span>
+          <span data-i18n="legendBoid">鸟群个体（三角形指向航向）</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-swatch">
+            <span style="background:#22d3ee"></span><span style="background:#a78bfa"></span>
+            <span style="background:#f472b6"></span><span style="background:#34d399"></span>
+            <span style="background:#facc15"></span><span style="background:#60a5fa"></span>
+            <span style="background:#fb923c"></span><span style="background:#e879f9"></span>
+          </div>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot pred"></span>
+          <span data-i18n="legendPredator">捕食者（鸟群会躲避）</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot radius-vis"></span>
+          <span data-i18n="legendRadius">感知半径（虚线圈）</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot trail"></span>
+          <span data-i18n="legendTrail">尾迹模式</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="controls-bar">
+  <button class="btn primary" id="btnPlay" data-i18n="start">开始</button>
+  <button class="btn" id="btnAdd" data-i18n="addBoids">添加 50 只</button>
+  <button class="btn danger" id="btnReset" data-i18n="reset">重置</button>
+  <button class="btn" id="btnPredator" data-i18n="predatorMode">捕食者</button>
+  <button class="btn" id="btnTrail" data-i18n="trailMode">尾迹</button>
+  <button class="btn" id="btnRadius" data-i18n="showRadius">显示感知圈</button>
+
+  <div class="speed-group">
+    <label data-i18n="speed">速度</label>
+    <input type="range" id="speedSlider" min="1" max="20" value="10">
+  </div>
+
+  <div class="stats">
+    <span data-i18n="boidCount">数量</span>: <strong id="boidCountEl">100</strong>
+    <span data-i18n="fps">FPS</span>: <strong id="fpsDisplay">--</strong>
+    <span data-i18n="flockCount">鸟群数</span>: <strong id="flockCountEl">--</strong>
+  </div>
+</div>
+
+<div class="footer">
+  <span data-i18n="footerCreated">由 BW 创建</span>
+  <span class="divider">|</span>
+  <span data-i18n="footerRef">Boids — Craig Reynolds 1986</span>
+</div>
+
+<script>
+// ============================================================
+//  Boids Flocking Simulation — 鸟群涌现模拟
+//  Craig Reynolds, 1986
+//  Created by BW
+// ============================================================
+
+const i18n = {
+  zh: {
+    title: 'Boids Flocking Simulation',
+    subtitle: '鸟群涌现模拟 — Craig Reynolds 1986',
+    langLabel: '中文',
+    rulesTitle: '三条规则',
+    rule1_sep: '分离：近邻太近 → 转向远离，避免碰撞',
+    rule2_ali: '对齐：匹配近邻平均航向 → 朝同一方向飞',
+    rule3_coh: '凝聚：朝近邻平均位置靠拢 → 聚集成群',
+    paramsTitle: '参数调节',
+    paramSep: '分离强度',
+    paramAli: '对齐强度',
+    paramCoh: '凝聚强度',
+    paramRadius: '感知半径',
+    paramMaxSpeed: '最大速度',
+    paramMaxForce: '转向力度',
+    legendTitle: '图例',
+    legendBoid: '鸟群个体（三角形指向航向）',
+    legendPredator: '捕食者（鸟群会躲避）',
+    legendRadius: '感知半径（虚线圈）',
+    legendTrail: '尾迹模式',
+    start: '开始',
+    pause: '暂停',
+    addBoids: '添加 50 只',
+    reset: '重置',
+    speed: '速度',
+    predatorMode: '捕食者',
+    trailMode: '尾迹',
+    showRadius: '显示感知圈',
+    boidCount: '数量',
+    fps: 'FPS',
+    flockCount: '鸟群数',
+    footerCreated: '由 BW 创建',
+    footerRef: 'Boids — Craig Reynolds 1986',
+  },
+  en: {
+    title: 'Boids Flocking Simulation',
+    subtitle: 'Boids Flocking — Craig Reynolds 1986',
+    langLabel: 'EN',
+    rulesTitle: 'Three Rules',
+    rule1_sep: 'Separation: steer away from nearby flockmates',
+    rule2_ali: 'Alignment: match average heading of neighbors',
+    rule3_coh: 'Cohesion: steer toward center of neighbors',
+    paramsTitle: 'Parameters',
+    paramSep: 'Separation',
+    paramAli: 'Alignment',
+    paramCoh: 'Cohesion',
+    paramRadius: 'Perception Radius',
+    paramMaxSpeed: 'Max Speed',
+    paramMaxForce: 'Steering Force',
+    legendTitle: 'Legend',
+    legendBoid: 'Boid (triangle points in heading direction)',
+    legendPredator: 'Predator (boids flee from it)',
+    legendRadius: 'Perception radius (dashed circle)',
+    legendTrail: 'Trail mode',
+    start: 'Start',
+    pause: 'Pause',
+    addBoids: 'Add 50 Boids',
+    reset: 'Reset',
+    speed: 'Speed',
+    predatorMode: 'Predator',
+    trailMode: 'Trail',
+    showRadius: 'Show Radius',
+    boidCount: 'Boids',
+    fps: 'FPS',
+    flockCount: 'Flocks',
+    footerCreated: 'Created by BW',
+    footerRef: 'Boids — Craig Reynolds 1986',
+  },
+};
+
+let lang = 'zh';
+
+function t(key) { return i18n[lang][key] || key; }
+
+function updateI18n() {
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (key === 'langLabel') {
+      el.textContent = lang === 'zh' ? 'English' : '中文';
+    } else {
+      el.textContent = t(key);
+    }
+  });
+  const btnPlay = document.getElementById('btnPlay');
+  if (!running) {
+    btnPlay.textContent = t('start');
+    btnPlay.classList.remove('paused');
+  } else {
+    btnPlay.textContent = t('pause');
+    btnPlay.classList.add('paused');
+  }
+  updateAllParamLabels();
+}
+
+// ── BOID COLORS ──
+const BOID_COLORS = [
+  '#22d3ee', '#a78bfa', '#f472b6', '#34d399',
+  '#facc15', '#60a5fa', '#fb923c', '#e879f9',
+];
+const PREDATOR_COLOR = '#ef4444';
+
+// ── SIMULATION STATE ──
+let boids = [];
+let predator = null;
+let running = true;
+let speedMs = 33;
+let animFrameId = null;
+let lastStepTime = 0;
+let lastFrameTime = 0;
+let frameCount = 0;
+let fpsValue = 0;
+let steps = 0;
+
+// Parameters
+let sepWeight = 1.5;
+let aliWeight = 1.0;
+let cohWeight = 1.0;
+let perceptionRadius = 55;
+let maxSpeed = 3.0;
+let maxForce = 0.15;
+let predatorActive = false;
+let trailMode = false;
+let showRadius = false;
+
+const TRAIL_LENGTH = 25;
+const PREDATOR_MAX_SPEED_FACTOR = 1.35;
+const PREDATOR_FORCE = 0.13;
+const FLEE_RADIUS = 130;
+const SEPARATION_RADIUS_FACTOR = 0.45;
+const MIN_SPEED = 0.6;
+const MOUSE_RADIUS = 160;
+
+// ── CANVAS ──
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const canvasPanel = document.getElementById('canvasPanel');
+let canvasWidth = 800;
+let canvasHeight = 500;
+
+function resizeCanvas() {
+  const rect = canvasPanel.getBoundingClientRect();
+  canvasWidth = rect.width;
+  canvasHeight = rect.height;
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
+  draw();
+}
+
+// ── SPATIAL HASH ──
+class SpatialHash {
+  constructor(cellSize) {
+    this.cellSize = cellSize;
+    this.map = new Map();
+  }
+  clear() { this.map.clear(); }
+  insert(index, x, y) {
+    const cx = Math.floor(x / this.cellSize);
+    const cy = Math.floor(y / this.cellSize);
+    const key = cx + ',' + cy;
+    if (!this.map.has(key)) this.map.set(key, []);
+    this.map.get(key).push(index);
+  }
+  query(x, y, radius, excludeIdx) {
+    const results = [];
+    const r2 = radius * radius;
+    const cx = Math.floor(x / this.cellSize);
+    const cy = Math.floor(y / this.cellSize);
+    for (let dc = -1; dc <= 1; dc++) {
+      for (let dr = -1; dr <= 1; dr++) {
+        const key = (cx + dc) + ',' + (cy + dr);
+        if (this.map.has(key)) {
+          for (const idx of this.map.get(key)) {
+            if (idx === excludeIdx) continue;
+            const b = boids[idx];
+            const dx = x - b.x;
+            const dy = y - b.y;
+            if ((dx * dx + dy * dy) < r2) results.push(idx);
+          }
+        }
+      }
+    }
+    return results;
+  }
+}
+
+// ── BOID SPAWNING ──
+function createBoid(x, y, vx, vy) {
+  return {
+    x: x !== undefined ? x : Math.random() * canvasWidth,
+    y: y !== undefined ? y : Math.random() * canvasHeight,
+    vx: vx !== undefined ? vx : (Math.random() - 0.5) * 2 * maxSpeed,
+    vy: vy !== undefined ? vy : (Math.random() - 0.5) * 2 * maxSpeed,
+    colorIdx: Math.floor(Math.random() * BOID_COLORS.length),
+    trail: [],
+  };
+}
+
+function spawnBoids(n) {
+  for (let i = 0; i < n; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = maxSpeed * (0.5 + Math.random() * 0.5);
+    boids.push(createBoid(
+      Math.random() * canvasWidth,
+      Math.random() * canvasHeight,
+      Math.cos(angle) * spd,
+      Math.sin(angle) * spd,
+    ));
+  }
+}
+
+function spawnPredator() {
+  const angle = Math.random() * Math.PI * 2;
+  const spd = maxSpeed * PREDATOR_MAX_SPEED_FACTOR;
+  predator = {
+    x: Math.random() * canvasWidth,
+    y: Math.random() * canvasHeight,
+    vx: Math.cos(angle) * spd,
+    vy: Math.sin(angle) * spd,
+  };
+}
+
+function resetAll() {
+  if (running) pause();
+  boids = [];
+  predator = null;
+  steps = 0;
+  spawnBoids(100);
+  predatorActive = false;
+  document.getElementById('btnPredator').classList.remove('active', 'predator');
+  draw();
+  updateStats();
+}
+
+// ── CORE SIMULATION ──
+function wrapCoord(val, max) {
+  if (val < 0) return val + max;
+  if (val >= max) return val - max;
+  return val;
+}
+
+function stepSimulation() {
+  steps++;
+  const sepSubRadius = perceptionRadius * SEPARATION_RADIUS_FACTOR;
+
+  // Build spatial hash
+  const hash = new SpatialHash(Math.max(perceptionRadius, 30));
+  for (let i = 0; i < boids.length; i++) {
+    hash.insert(i, boids[i].x, boids[i].y);
+  }
+
+  // Update each boid
+  for (let i = 0; i < boids.length; i++) {
+    const b = boids[i];
+    const neighbors = hash.query(b.x, b.y, perceptionRadius, i);
+
+    let sepX = 0, sepY = 0, sepCnt = 0;
+    let aliX = 0, aliY = 0, aliCnt = 0;
+    let cohX = 0, cohY = 0, cohCnt = 0;
+
+    // Cache closest neighbor distances to skip sqrt when possible
+    for (let ni = 0; ni < neighbors.length; ni++) {
+      const n = boids[neighbors[ni]];
+      const dx = b.x - n.x;
+      const dy = b.y - n.y;
+      const distSq = dx * dx + dy * dy;
+
+      // Separation — only within sub-radius
+      if (distSq < sepSubRadius * sepSubRadius && distSq > 0.0001) {
+        const dist = Math.sqrt(distSq);
+        const force = (sepSubRadius - dist) / sepSubRadius;
+        sepX += (dx / dist) * force;
+        sepY += (dy / dist) * force;
+        sepCnt++;
+      }
+
+      // Alignment — match velocity direction
+      if (distSq < perceptionRadius * perceptionRadius) {
+        aliX += n.vx;
+        aliY += n.vy;
+        aliCnt++;
+
+        // Cohesion — steer toward neighbors' center
+        cohX += n.x;
+        cohY += n.y;
+        cohCnt++;
+      }
+    }
+
+    // Average and normalize
+    let steerX = 0, steerY = 0;
+
+    if (sepCnt > 0) { sepX /= sepCnt; sepY /= sepCnt; }
+    if (aliCnt > 0) {
+      aliX /= aliCnt; aliY /= aliCnt;
+      const am = Math.sqrt(aliX * aliX + aliY * aliY);
+      if (am > 0) { aliX /= am; aliY /= am; }
+    }
+    if (cohCnt > 0) {
+      cohX /= cohCnt; cohY /= cohCnt;
+      cohX = cohX - b.x; cohY = cohY - b.y;
+      const cm = Math.sqrt(cohX * cohX + cohY * cohY);
+      if (cm > 0) { cohX /= cm; cohY /= cm; }
+    }
+
+    steerX = sepX * sepWeight + aliX * aliWeight + cohX * cohWeight;
+    steerY = sepY * sepWeight + aliY * aliWeight + cohY * cohWeight;
+
+    // Flee from predator
+    if (predatorActive && predator) {
+      const pdx = b.x - predator.x;
+      const pdy = b.y - predator.y;
+      const pdistSq = pdx * pdx + pdy * pdy;
+      if (pdistSq < FLEE_RADIUS * FLEE_RADIUS && pdistSq > 0.0001) {
+        const pdist = Math.sqrt(pdistSq);
+        const fleeForce = (FLEE_RADIUS - pdist) / FLEE_RADIUS * 2.5;
+        steerX += (pdx / pdist) * fleeForce;
+        steerY += (pdy / pdist) * fleeForce;
+      }
+    }
+
+    // Mouse interaction
+    if (mouseHeld) {
+      const mdx = mouseX - b.x;
+      const mdy = mouseY - b.y;
+      const mdistSq = mdx * mdx + mdy * mdy;
+      if (mdistSq < MOUSE_RADIUS * MOUSE_RADIUS && mdistSq > 0.0001) {
+        const mdist = Math.sqrt(mdistSq);
+        if (mouseAttract) {
+          steerX += (mdx / mdist) * 0.08;
+          steerY += (mdy / mdist) * 0.08;
+        } else {
+          steerX -= (mdx / mdist) * 0.15;
+          steerY -= (mdy / mdist) * 0.15;
+        }
+      }
+    }
+
+    // Clamp steering
+    const steerMag = Math.sqrt(steerX * steerX + steerY * steerY);
+    if (steerMag > maxForce) {
+      steerX = steerX / steerMag * maxForce;
+      steerY = steerY / steerMag * maxForce;
+    }
+
+    // Apply steering
+    b.vx += steerX;
+    b.vy += steerY;
+
+    // Clamp speed
+    let spd = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+    if (spd > maxSpeed) {
+      b.vx = b.vx / spd * maxSpeed;
+      b.vy = b.vy / spd * maxSpeed;
+    } else if (spd < MIN_SPEED) {
+      if (spd < 0.01) {
+        const a = Math.random() * Math.PI * 2;
+        b.vx = Math.cos(a) * MIN_SPEED;
+        b.vy = Math.sin(a) * MIN_SPEED;
+      } else {
+        b.vx = b.vx / spd * MIN_SPEED;
+        b.vy = b.vy / spd * MIN_SPEED;
+      }
+    }
+
+    // Move & wrap
+    b.x += b.vx;
+    b.y += b.vy;
+    b.x = wrapCoord(b.x, canvasWidth);
+    b.y = wrapCoord(b.y, canvasHeight);
+
+    // Trail
+    if (trailMode) {
+      b.trail.push({ x: b.x, y: b.y });
+      if (b.trail.length > TRAIL_LENGTH) b.trail.shift();
+    }
+  }
+
+  // Update predator
+  if (predatorActive && predator && boids.length > 0) {
+    const p = predator;
+    // Chase nearest boid
+    let nearest = null;
+    let nearestDistSq = Infinity;
+    for (let i = 0; i < boids.length; i++) {
+      const dx = p.x - boids[i].x;
+      const dy = p.y - boids[i].y;
+      const dsq = dx * dx + dy * dy;
+      if (dsq < nearestDistSq) { nearestDistSq = dsq; nearest = i; }
+    }
+    if (nearest !== null && nearestDistSq > 0.01) {
+      const n = boids[nearest];
+      const dx = n.x - p.x;
+      const dy = n.y - p.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      p.vx += (dx / dist) * PREDATOR_FORCE;
+      p.vy += (dy / dist) * PREDATOR_FORCE;
+    }
+    // Clamp predator speed
+    const pspd = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+    const pMax = maxSpeed * PREDATOR_MAX_SPEED_FACTOR;
+    if (pspd > pMax) { p.vx = p.vx / pspd * pMax; p.vy = p.vy / pspd * pMax; }
+    // Move & wrap
+    p.x += p.vx;
+    p.y += p.vy;
+    p.x = wrapCoord(p.x, canvasWidth);
+    p.y = wrapCoord(p.y, canvasHeight);
+  }
+}
+
+// ── UNION-FIND FLOCK COUNTING ──
+function countFlocks() {
+  if (boids.length === 0) return 0;
+  const n = boids.length;
+  const parent = new Array(n);
+  const rank = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) parent[i] = i;
+
+  function find(x) {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  }
+  function union(a, b) {
+    const ra = find(a), rb = find(b);
+    if (ra === rb) return;
+    if (rank[ra] < rank[rb]) parent[ra] = rb;
+    else if (rank[ra] > rank[rb]) parent[rb] = ra;
+    else { parent[rb] = ra; rank[ra]++; }
+  }
+
+  const clusterRad = perceptionRadius * 0.7;
+  const hash = new SpatialHash(Math.max(clusterRad, 30));
+  for (let i = 0; i < n; i++) hash.insert(i, boids[i].x, boids[i].y);
+
+  for (let i = 0; i < n; i++) {
+    const neighbors = hash.query(boids[i].x, boids[i].y, clusterRad, i);
+    for (let ni = 0; ni < neighbors.length; ni++) {
+      if (neighbors[ni] > i) union(i, neighbors[ni]);
+    }
+  }
+
+  const compSizes = {};
+  for (let i = 0; i < n; i++) {
+    const root = find(i);
+    compSizes[root] = (compSizes[root] || 0) + 1;
+  }
+
+  let flocks = 0;
+  for (const root in compSizes) {
+    if (compSizes[root] >= 3) flocks++;
+  }
+  return flocks;
+}
+
+// ── RENDERING ──
+function draw() {
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+  ctx.fillStyle = '#050510';
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  // Trails
+  if (trailMode) {
+    for (let i = 0; i < boids.length; i++) {
+      const b = boids[i];
+      const t = b.trail;
+      if (t.length < 2) continue;
+      ctx.strokeStyle = BOID_COLORS[b.colorIdx];
+      ctx.lineWidth = 1.2;
+      ctx.globalAlpha = 0.03;
+      ctx.beginPath();
+      ctx.moveTo(t[0].x, t[0].y);
+      for (let j = 1; j < t.length; j++) {
+        const alpha = 0.03 + (j / t.length) * 0.12;
+        ctx.globalAlpha = alpha;
+        ctx.lineTo(t[j].x, t[j].y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(t[j].x, t[j].y);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Perception radius circles (display only some to avoid visual noise)
+  if (showRadius) {
+    const sampleRate = boids.length > 150 ? 0.2 : (boids.length > 80 ? 0.4 : 1.0);
+    ctx.strokeStyle = 'rgba(34,211,238,0.07)';
+    ctx.lineWidth = 0.8;
+    for (let i = 0; i < boids.length; i++) {
+      if (Math.random() > sampleRate) continue;
+      const b = boids[i];
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, perceptionRadius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  // Draw boids
+  const TRI_SIZE = 5.5;
+  for (let i = 0; i < boids.length; i++) {
+    const b = boids[i];
+    const angle = Math.atan2(b.vy, b.vx);
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(angle);
+    ctx.fillStyle = BOID_COLORS[b.colorIdx];
+    ctx.beginPath();
+    ctx.moveTo(TRI_SIZE, 0);
+    ctx.lineTo(-TRI_SIZE, -TRI_SIZE * 0.65);
+    ctx.lineTo(-TRI_SIZE, TRI_SIZE * 0.65);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Draw predator
+  if (predatorActive && predator) {
+    const p = predator;
+    const angle = Math.atan2(p.vy, p.vx);
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(angle);
+    ctx.shadowColor = 'rgba(239,68,68,0.7)';
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = PREDATOR_COLOR;
+    ctx.beginPath();
+    ctx.moveTo(9, 0);
+    ctx.lineTo(-9, -6);
+    ctx.lineTo(-7, 0);
+    ctx.lineTo(-9, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Predator perception circle
+    if (showRadius) {
+      ctx.strokeStyle = 'rgba(239,68,68,0.12)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 8]);
+      ctx.beginPath();
+      ctx.arc(0, 0, FLEE_RADIUS, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+}
+
+// ── ANIMATION LOOP ──
+function loop(timestamp) {
+  if (!running) return;
+  animFrameId = requestAnimationFrame(loop);
+
+  // FPS tracking
+  if (lastFrameTime > 0) {
+    const elapsed = timestamp - lastFrameTime;
+    fpsValue = Math.round(1000 / elapsed);
+  }
+  lastFrameTime = timestamp;
+
+  if (timestamp - lastStepTime >= speedMs) {
+    stepSimulation();
+    draw();
+    lastStepTime = timestamp;
+    if (steps % 5 === 0) updateStats();
+  }
+}
+
+function start() {
+  if (running) return;
+  running = true;
+  lastStepTime = performance.now();
+  lastFrameTime = performance.now();
+  animFrameId = requestAnimationFrame(loop);
+  const btn = document.getElementById('btnPlay');
+  btn.textContent = t('pause');
+  btn.classList.add('paused');
+}
+
+function pause() {
+  running = false;
+  if (animFrameId) cancelAnimationFrame(animFrameId);
+  animFrameId = null;
+  const btn = document.getElementById('btnPlay');
+  btn.textContent = t('start');
+  btn.classList.remove('paused');
+}
+
+function togglePlay() { running ? pause() : start(); }
+
+// ── MOUSE INTERACTION ──
+let mouseHeld = false;
+let mouseAttract = true;
+let mouseX = 0;
+let mouseY = 0;
+
+canvas.addEventListener('mousedown', e => {
+  if (e.button === 0) { mouseHeld = true; mouseAttract = true; }
+  if (e.button === 2) { mouseHeld = true; mouseAttract = false; }
+});
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  mouseX = e.clientX - rect.left;
+  mouseY = e.clientY - rect.top;
+});
+window.addEventListener('mouseup', () => { mouseHeld = false; });
+canvas.addEventListener('mouseleave', () => { mouseHeld = false; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// Touch support
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  mouseX = t.clientX - rect.left;
+  mouseY = t.clientY - rect.top;
+  mouseHeld = true;
+  mouseAttract = e.touches.length === 1;
+});
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  mouseX = t.clientX - rect.left;
+  mouseY = t.clientY - rect.top;
+  mouseAttract = e.touches.length === 1;
+});
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  mouseHeld = e.touches.length > 0;
+});
+
+// ── CONTROLS ──
+document.getElementById('btnPlay').addEventListener('click', togglePlay);
+document.getElementById('btnAdd').addEventListener('click', () => {
+  spawnBoids(50);
+  updateStats();
+  draw();
+});
+document.getElementById('btnReset').addEventListener('click', resetAll);
+
+document.getElementById('btnPredator').addEventListener('click', function() {
+  predatorActive = !predatorActive;
+  if (predatorActive) {
+    spawnPredator();
+    this.classList.add('active', 'predator');
+  } else {
+    predator = null;
+    this.classList.remove('active', 'predator');
+  }
+  draw();
+});
+
+document.getElementById('btnTrail').addEventListener('click', function() {
+  trailMode = !trailMode;
+  if (trailMode) {
+    this.classList.add('active');
+  } else {
+    this.classList.remove('active');
+    for (let i = 0; i < boids.length; i++) boids[i].trail = [];
+  }
+  draw();
+});
+
+document.getElementById('btnRadius').addEventListener('click', function() {
+  showRadius = !showRadius;
+  if (showRadius) this.classList.add('active'); else this.classList.remove('active');
+  draw();
+});
+
+document.getElementById('speedSlider').addEventListener('input', e => {
+  speedMs = 1050 - (e.target.value * 50);
+});
+
+// Parameter sliders
+document.getElementById('sepSlider').addEventListener('input', e => {
+  sepWeight = e.target.value / 10;
+  document.getElementById('sepVal').textContent = sepWeight.toFixed(1);
+});
+document.getElementById('aliSlider').addEventListener('input', e => {
+  aliWeight = e.target.value / 10;
+  document.getElementById('aliVal').textContent = aliWeight.toFixed(1);
+});
+document.getElementById('cohSlider').addEventListener('input', e => {
+  cohWeight = e.target.value / 10;
+  document.getElementById('cohVal').textContent = cohWeight.toFixed(1);
+});
+document.getElementById('radiusSlider').addEventListener('input', e => {
+  perceptionRadius = parseInt(e.target.value);
+  document.getElementById('radiusVal').textContent = perceptionRadius;
+});
+document.getElementById('maxSpeedSlider').addEventListener('input', e => {
+  maxSpeed = e.target.value / 10;
+  document.getElementById('maxSpeedVal').textContent = maxSpeed.toFixed(1);
+});
+document.getElementById('maxForceSlider').addEventListener('input', e => {
+  maxForce = e.target.value / 100;
+  document.getElementById('maxForceVal').textContent = maxForce.toFixed(2);
+});
+
+function updateAllParamLabels() {
+  document.getElementById('sepVal').textContent = sepWeight.toFixed(1);
+  document.getElementById('aliVal').textContent = aliWeight.toFixed(1);
+  document.getElementById('cohVal').textContent = cohWeight.toFixed(1);
+  document.getElementById('radiusVal').textContent = perceptionRadius;
+  document.getElementById('maxSpeedVal').textContent = maxSpeed.toFixed(1);
+  document.getElementById('maxForceVal').textContent = maxForce.toFixed(2);
+}
+
+document.getElementById('langToggle').addEventListener('click', () => {
+  lang = lang === 'zh' ? 'en' : 'zh';
+  updateI18n();
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  switch (e.code) {
+    case 'Space': e.preventDefault(); togglePlay(); break;
+    case 'KeyS': e.preventDefault(); if (!running) { stepSimulation(); draw(); updateStats(); } break;
+    case 'KeyR': e.preventDefault(); resetAll(); break;
+    case 'KeyA': e.preventDefault(); spawnBoids(50); updateStats(); draw(); break;
+    case 'KeyP': e.preventDefault(); document.getElementById('btnPredator').click(); break;
+    case 'KeyT': e.preventDefault(); document.getElementById('btnTrail').click(); break;
+    case 'KeyD': e.preventDefault(); document.getElementById('btnRadius').click(); break;
+  }
+});
+
+// ── STATS ──
+function updateStats() {
+  document.getElementById('boidCountEl').textContent = boids.length;
+  document.getElementById('fpsDisplay').textContent = fpsValue || '--';
+  // Only compute flock count periodically (expensive)
+  if (steps % 10 === 0 || !running) {
+    const fc = countFlocks();
+    document.getElementById('flockCountEl').textContent = fc;
+  }
+}
+
+// ── INIT ──
+function init() {
+  resizeCanvas();
+  spawnBoids(100);
+  updateI18n();
+  updateAllParamLabels();
+  updateStats();
+  start(); // auto-start
+}
+
+window.addEventListener('resize', resizeCanvas);
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
