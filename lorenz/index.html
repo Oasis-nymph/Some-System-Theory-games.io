@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>洛伦兹吸引子 | Lorenz Attractor</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #050510;
+    overflow: hidden;
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    -webkit-user-select: none;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  #container {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+  }
+
+  /* ---- glass panel ---- */
+  #panel {
+    position: fixed;
+    z-index: 10;
+    top: 24px;
+    left: 24px;
+    width: 312px;
+    background: rgba(8, 8, 28, 0.72);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 14px;
+    padding: 22px 20px 18px;
+    color: #d0d0dc;
+    transition: opacity 0.3s;
+  }
+
+  #panel h1 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: #f0e6c0;
+    margin-bottom: 2px;
+  }
+  #panel h2 {
+    font-size: 0.82rem;
+    font-weight: 400;
+    color: #8888a8;
+    letter-spacing: 0.05em;
+    margin-bottom: 12px;
+  }
+  #panel p.intro {
+    font-size: 0.78rem;
+    line-height: 1.55;
+    color: #aab;
+    margin-bottom: 12px;
+    border-left: 2px solid rgba(255, 180, 60, 0.35);
+    padding-left: 10px;
+  }
+
+  /* ---- formula block ---- */
+  .formula-block {
+    margin-bottom: 14px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    padding: 10px 12px;
+  }
+  .formula-section {
+    margin-bottom: 6px;
+  }
+  .formula-section:last-child { margin-bottom: 0; }
+  .formula-label {
+    font-size: 0.66rem;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 3px;
+  }
+  .formula-lines {
+    font-family: "SF Mono", "Cascadia Code", "Consolas", "Courier New", monospace;
+    font-size: 0.70rem;
+    color: #c8c8d8;
+    line-height: 1.55;
+  }
+  .formula-lines .hl { color: #d8b860; }
+  .formula-lines .hl2 { color: #60c0d0; }
+  .formula-sep {
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    margin: 6px 0;
+  }
+
+  /* ---- docs toggle ---- */
+  #docs-toggle {
+    font-size: 0.74rem;
+    color: #99b;
+    cursor: pointer;
+    margin-bottom: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: color 0.18s;
+    user-select: none;
+  }
+  #docs-toggle:hover { color: #d8b860; }
+  #docs-toggle .arrow {
+    display: inline-block;
+    transition: transform 0.25s;
+    font-size: 0.65rem;
+  }
+  #docs-toggle.open .arrow { transform: rotate(90deg); }
+
+  #docs-content {
+    margin-bottom: 14px;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.35s ease;
+  }
+  #docs-content.open { max-height: 500px; overflow-y: auto; }
+  .docs-section { margin-bottom: 10px; }
+  .docs-section:last-child { margin-bottom: 0; }
+  .docs-section h4 {
+    font-size: 0.72rem;
+    color: #c8b878;
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+  .docs-section p {
+    font-size: 0.71rem;
+    line-height: 1.55;
+    color: #99a;
+  }
+  #docs-content::-webkit-scrollbar { width: 3px; }
+  #docs-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+  /* ---- sliders ---- */
+  .ctrl-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .ctrl-row label {
+    width: 72px;
+    font-size: 0.78rem;
+    color: #bcc;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .ctrl-row label span.sym {
+    font-family: "Georgia", "Times New Roman", serif;
+    font-style: italic;
+    font-size: 0.9rem;
+    color: #d8b860;
+    margin-right: 6px;
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 5px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.10);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #d8b860;
+    border: 2px solid rgba(0,0,0,0.3);
+    cursor: pointer;
+    transition: transform 0.12s;
+  }
+  input[type="range"]::-webkit-slider-thumb:active { transform: scale(1.2); }
+  .val {
+    width: 36px;
+    text-align: right;
+    font-size: 0.75rem;
+    color: #99a;
+    font-variant-numeric: tabular-nums;
+    font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
+    flex-shrink: 0;
+  }
+
+  /* ---- buttons ---- */
+  .btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .btn-row button {
+    flex: 1;
+    padding: 7px 0;
+    border-radius: 7px;
+    border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.06);
+    color: #ccd;
+    font-size: 0.78rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.18s, border-color 0.18s;
+  }
+  .btn-row button:hover {
+    background: rgba(255,255,255,0.13);
+    border-color: rgba(255,255,255,0.24);
+  }
+  .btn-row button.accent {
+    border-color: rgba(216,184,96,0.35);
+    color: #d8b860;
+  }
+  .btn-row button.accent:hover { background: rgba(216,184,96,0.12); }
+
+  /* ---- lang toggle ---- */
+  #lang-btn {
+    position: fixed;
+    z-index: 10;
+    top: 24px;
+    right: 24px;
+    padding: 6px 14px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(8,8,28,0.65);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: #bcc;
+    font-size: 0.76rem;
+    cursor: pointer;
+    font-family: inherit;
+    letter-spacing: 0.04em;
+    transition: background 0.18s, border-color 0.18s;
+  }
+  #lang-btn:hover { background: rgba(255,255,255,0.10); }
+
+  /* ---- footer hint ---- */
+  #hint {
+    position: fixed;
+    z-index: 5;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.68rem;
+    color: rgba(255,255,255,0.18);
+    letter-spacing: 0.04em;
+    pointer-events: none;
+  }
+
+  /* responsive */
+  @media (max-width: 600px) {
+    #panel {
+      top: auto;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      width: 100%;
+      border-radius: 14px 14px 0 0;
+      padding: 16px 16px 12px;
+    }
+    #panel p.intro, .formula-block, #docs-toggle, #docs-content { display: none; }
+    #hint { bottom: 200px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="container"></div>
+
+<div id="panel">
+  <h1 data-i18n="title">洛伦兹吸引子</h1>
+  <h2 data-i18n="subtitle">Lorenz Attractor</h2>
+  <p class="intro" data-i18n="intro">
+    洛伦兹系统由气象学家爱德华·洛伦兹于1963年提出，是混沌理论的经典范例。确定的方程产生不可预测的轨迹，对初始条件极度敏感——即「蝴蝶效应」。
+  </p>
+  <div id="docs-toggle"><span data-i18n="docs_toggle">详细介绍</span> <span class="arrow">▸</span></div>
+  <div id="docs-content">
+    <div class="docs-section">
+      <h4 data-i18n="docs_history_title">历史背景</h4>
+      <p data-i18n="docs_history">1963年，MIT气象学家爱德华·洛伦兹在模拟大气对流时，将一组复杂的流体方程简化为三个耦合的非线性常微分方程。他发现即使是最简单的确定系统，也能产生极其复杂、永不重复的行为——这一发现奠定了混沌理论的基础。相传洛伦兹某次重新运行模拟，输入了四舍五入后的初始值 0.506 而非精确值 0.506127，结果轨迹截然不同，「蝴蝶效应」由此诞生。</p>
+    </div>
+    <div class="docs-section">
+      <h4 data-i18n="docs_params_title">参数含义</h4>
+      <p data-i18n="docs_params"><b>σ（西格玛）</b>— 普朗特数，流体粘性力与热扩散率的比值，控制 x-y 耦合强度。<br><b>ρ（密度比 / 瑞利数）</b>— 温差驱动力，当 ρ > 1 时系统开始对流；ρ > 24.74 时进入混沌。<br><b>β（阻尼比）</b>— 与对流胞几何形状相关的常数，控制 z 方向的衰减速度。</p>
+    </div>
+    <div class="docs-section">
+      <h4 data-i18n="docs_chaos_title">混沌特性</h4>
+      <p data-i18n="docs_chaos">洛伦兹系统是「确定混沌」的典范：方程完全确定、无任何随机项，但长期行为对初始条件极度敏感。相空间中的轨迹被吸引到一个分形结构——奇异吸引子，形状似蝴蝶翅膀。系统在两个不稳定平衡点之间不规则切换，永远不重复，也永远无法精确预测。</p>
+    </div>
+    <div class="docs-section">
+      <h4 data-i18n="docs_interact_title">交互方式</h4>
+      <p data-i18n="docs_interact">页面展示两条轨迹——初始条件仅差 0.001，用来演示蝴蝶效应。橙金轨迹与青蓝轨迹从几乎重合到渐行渐远，最终占据不同「翅膀」。可用鼠标旋转/缩放/平移视角，拖动滑块实时改变参数观察系统行为变化。空格键暂停，R 键重置，C 键清轨迹。</p>
+    </div>
+  </div>
+  <div class="formula-block">
+    <div class="formula-section">
+      <div class="formula-label" data-i18n="eq_general">一般形式 · General Form</div>
+      <div class="formula-lines">
+        <div>d<i>x</i>/dt = <span class="hl">&sigma;</span>(y − x)</div>
+        <div>d<i>y</i>/dt = x(<span class="hl">&rho;</span> − z) − y</div>
+        <div>d<i>z</i>/dt = xy − <span class="hl">&beta;</span>z</div>
+      </div>
+    </div>
+    <hr class="formula-sep">
+    <div class="formula-section">
+      <div class="formula-label" data-i18n="eq_current">带入参数 · With Values</div>
+      <div class="formula-lines" id="eq-substituted">
+        <div>d<i>x</i>/dt = <span class="hl2">10.0</span>(y − x)</div>
+        <div>d<i>y</i>/dt = x(<span class="hl2">28.0</span> − z) − y</div>
+        <div>d<i>z</i>/dt = xy − <span class="hl2">2.67</span>z</div>
+      </div>
+    </div>
+  </div>
+  <div class="ctrl-row">
+    <label><span class="sym">&sigma;</span><span data-i18n="sigma_label">西格玛</span></label>
+    <input type="range" id="sigma" min="1" max="20" step="0.1" value="10">
+    <span class="val" id="sigma-val">10.0</span>
+  </div>
+  <div class="ctrl-row">
+    <label><span class="sym">&rho;</span><span data-i18n="rho_label">密度比</span></label>
+    <input type="range" id="rho" min="1" max="50" step="0.1" value="28">
+    <span class="val" id="rho-val">28.0</span>
+  </div>
+  <div class="ctrl-row">
+    <label><span class="sym">&beta;</span><span data-i18n="beta_label">阻尼比</span></label>
+    <input type="range" id="beta" min="0.5" max="6" step="0.01" value="2.667">
+    <span class="val" id="beta-val">2.67</span>
+  </div>
+  <div class="btn-row">
+    <button id="btn-reset" class="accent" data-i18n="reset">重 置</button>
+    <button id="btn-pause" data-i18n="pause">暂 停</button>
+    <button id="btn-trail" data-i18n="clear_trail">清轨迹</button>
+  </div>
+</div>
+
+<button id="lang-btn">EN</button>
+
+<div id="hint" data-i18n="hint">拖拽旋转 · 滚轮缩放 · 右键平移</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// ─────────────────────────────────────
+// i18n
+// ─────────────────────────────────────
+const i18n = {
+  zh: {
+    title: '洛伦兹吸引子',
+    subtitle: 'Lorenz Attractor',
+    intro: '洛伦兹系统由气象学家爱德华·洛伦兹于1963年提出，是混沌理论的经典范例。确定的方程产生不可预测的轨迹，对初始条件极度敏感——即「蝴蝶效应」。两条轨迹初始仅差 0.001，随时间推移渐行渐远。',
+    sigma_label: '西格玛',
+    rho_label: '密度比',
+    beta_label: '阻尼比',
+    reset: '重 置',
+    pause: '暂 停',
+    play: '播 放',
+    clear_trail: '清轨迹',
+    hint: '拖拽旋转 · 滚轮缩放 · 右键平移',
+    eq_general: '一般形式 · General Form',
+    eq_current: '带入参数 · With Values',
+    docs_toggle: '详细介绍',
+    docs_history_title: '历史背景',
+    docs_history: '1963年，MIT气象学家爱德华·洛伦兹在模拟大气对流时，将一组复杂的流体方程简化为三个耦合的非线性常微分方程。他发现即使是最简单的确定系统，也能产生极其复杂、永不重复的行为——这一发现奠定了混沌理论的基础。相传洛伦兹某次重新运行模拟，输入了四舍五入后的初始值 0.506 而非精确值 0.506127，结果轨迹截然不同，「蝴蝶效应」由此诞生。',
+    docs_params_title: '参数含义',
+    docs_params: '<b>σ（西格玛）</b>— 普朗特数，流体粘性力与热扩散率的比值，控制 x-y 耦合强度。<br><b>ρ（密度比 / 瑞利数）</b>— 温差驱动力，当 ρ > 1 时系统开始对流；ρ > 24.74 时进入混沌。<br><b>β（阻尼比）</b>— 与对流胞几何形状相关的常数，控制 z 方向的衰减速度。',
+    docs_chaos_title: '混沌特性',
+    docs_chaos: '洛伦兹系统是「确定混沌」的典范：方程完全确定、无任何随机项，但长期行为对初始条件极度敏感。相空间中的轨迹被吸引到一个分形结构——奇异吸引子，形状似蝴蝶翅膀。系统在两个不稳定平衡点之间不规则切换，永远不重复，也永远无法精确预测。',
+    docs_interact_title: '交互方式',
+    docs_interact: '页面展示两条轨迹——初始条件仅差 0.001，用来演示蝴蝶效应。橙金轨迹与青蓝轨迹从几乎重合到渐行渐远，最终占据不同「翅膀」。可用鼠标旋转/缩放/平移视角，拖动滑块实时改变参数观察系统行为变化。空格键暂停，R 键重置，C 键清轨迹。'
+  },
+  en: {
+    title: 'Lorenz Attractor',
+    subtitle: 'Chaos in Deterministic Systems',
+    intro: 'Proposed by Edward Lorenz in 1963, this simplified convection model is the iconic example of chaos theory. Deterministic equations yield unpredictable trajectories — extreme sensitivity to initial conditions, the "butterfly effect." The two trails start just 0.001 apart and gradually diverge.',
+    sigma_label: 'Sigma',
+    rho_label: 'Rho',
+    beta_label: 'Beta',
+    reset: 'Reset',
+    pause: 'Pause',
+    play: 'Play',
+    clear_trail: 'Clear',
+    hint: 'Drag to rotate · Scroll to zoom · Right-drag to pan',
+    eq_general: 'General Form',
+    eq_current: 'With Current Values',
+    docs_toggle: 'Details',
+    docs_history_title: 'History',
+    docs_history: 'In 1963, MIT meteorologist Edward Lorenz simplified a complex fluid convection model down to three coupled nonlinear ODEs. He discovered that even this totally deterministic system could produce endlessly complex, non-repeating behavior — laying the foundation for chaos theory. Legend has it that Lorenz once restarted a simulation using the rounded value 0.506 instead of the full 0.506127, and the resulting trajectory was completely different — giving birth to the "butterfly effect."',
+    docs_params_title: 'Parameters',
+    docs_params: '<b>σ (Sigma)</b> — Prandtl number, the ratio of viscous to thermal diffusion, controlling x-y coupling strength.<br><b>ρ (Rho)</b> — Rayleigh number, the temperature gradient driving force. Convection begins at ρ > 1; chaos emerges at ρ > 24.74.<br><b>β (Beta)</b> — Geometric factor related to convection cell aspect ratio, controlling z-direction damping.',
+    docs_chaos_title: 'Deterministic Chaos',
+    docs_chaos: 'The Lorenz system exemplifies "deterministic chaos": the equations contain no randomness, yet long-term behavior is exquisitely sensitive to initial conditions. In phase space, trajectories are drawn toward a fractal structure — the strange attractor — whose shape resembles butterfly wings. The system switches irregularly between two unstable equilibria, never repeating, never precisely predictable.',
+    docs_interact_title: 'Interaction',
+    docs_interact: 'Two trajectories are shown with initial conditions differing by only 0.001, demonstrating the butterfly effect. The warm (orange-gold) and cool (cyan-blue) trails start nearly overlapping and gradually diverge to occupy opposite "wings." Drag to rotate, scroll to zoom, right-drag to pan. Adjust sliders to change parameters in real time. Space = pause, R = reset, C = clear trails.'
+  }
+};
+
+let lang = 'zh';
+function t(key) { return i18n[lang][key]; }
+
+function updateLangUI() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const k = el.getAttribute('data-i18n');
+    const val = t(k);
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+      el.placeholder = val;
+    } else if (val.includes('<')) {
+      el.innerHTML = val;
+    } else {
+      el.textContent = val;
+    }
+  });
+  document.getElementById('lang-btn').textContent = lang === 'zh' ? 'EN' : '中';
+  const pb = document.getElementById('btn-pause');
+  pb.textContent = paused ? t('play') : t('pause');
+  updateFormulaDisplay();
+}
+
+function updateFormulaDisplay() {
+  const s = params.sigma.toFixed(1);
+  const r = params.rho.toFixed(1);
+  const b = params.beta.toFixed(2);
+  document.getElementById('eq-substituted').innerHTML =
+    `<div>d<i>x</i>/dt = <span class="hl2">${s}</span>(y − x)</div>` +
+    `<div>d<i>y</i>/dt = x(<span class="hl2">${r}</span> − z) − y</div>` +
+    `<div>d<i>z</i>/dt = xy − <span class="hl2">${b}</span>z</div>`;
+}
+
+document.getElementById('lang-btn').addEventListener('click', () => {
+  lang = lang === 'zh' ? 'en' : 'zh';
+  updateLangUI();
+});
+
+// docs toggle
+const docsToggle = document.getElementById('docs-toggle');
+const docsContent = document.getElementById('docs-content');
+let docsOpen = false;
+docsToggle.addEventListener('click', () => {
+  docsOpen = !docsOpen;
+  if (docsOpen) {
+    docsToggle.classList.add('open');
+    docsContent.classList.add('open');
+  } else {
+    docsToggle.classList.remove('open');
+    docsContent.classList.remove('open');
+  }
+});
+
+// ─────────────────────────────────────
+// Lorenz system — RK4 integrator
+// ─────────────────────────────────────
+function lorenzDeriv(x, y, z, sigma, rho, beta) {
+  return [
+    sigma * (y - x),
+    x * (rho - z) - y,
+    x * y - beta * z
+  ];
+}
+
+function rk4Step(state, dt, sigma, rho, beta) {
+  const [x, y, z] = state;
+  const [k1x, k1y, k1z] = lorenzDeriv(x, y, z, sigma, rho, beta);
+  const [k2x, k2y, k2z] = lorenzDeriv(
+    x + 0.5 * dt * k1x, y + 0.5 * dt * k1y, z + 0.5 * dt * k1z, sigma, rho, beta);
+  const [k3x, k3y, k3z] = lorenzDeriv(
+    x + 0.5 * dt * k2x, y + 0.5 * dt * k2y, z + 0.5 * dt * k2z, sigma, rho, beta);
+  const [k4x, k4y, k4z] = lorenzDeriv(
+    x + dt * k3x, y + dt * k3y, z + dt * k3z, sigma, rho, beta);
+  return [
+    x + dt / 6 * (k1x + 2 * k2x + 2 * k3x + k4x),
+    y + dt / 6 * (k1y + 2 * k2y + 2 * k3y + k4y),
+    z + dt / 6 * (k1z + 2 * k2z + 2 * k3z + k4z)
+  ];
+}
+
+// ─────────────────────────────────────
+// Simulation state
+// ─────────────────────────────────────
+const MAX_POINTS = 18000;
+const DT = 0.004;
+const STEPS_PER_FRAME = 5;
+
+let params = { sigma: 10, rho: 28, beta: 8 / 3 };
+let stateA = [1.0, 1.0, 1.0];
+let stateB = [1.001, 1.0, 1.0];
+let pointCount = 0;
+let paused = false;
+
+// ─────────────────────────────────────
+// Three.js setup
+// ─────────────────────────────────────
+const container = document.getElementById('container');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ReinhardToneMapping;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#050510');
+scene.fog = new THREE.FogExp2('#050510', 0.00008);
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.5, 400);
+camera.position.set(18, 12, 48);
+camera.lookAt(0, 0, 24);
+
+// post-processing
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  1.6,   // strength
+  0.5,   // radius
+  0.0    // threshold — bloom everything above black
+);
+composer.addPass(bloomPass);
+
+// orbit controls
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 2, 24);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.35;
+controls.minDistance = 8;
+controls.maxDistance = 150;
+controls.update();
+
+// ─────────────────────────────────────
+// Lighting (for any non-basic materials)
+// ─────────────────────────────────────
+scene.add(new THREE.AmbientLight(0x111122, 0.5));
+
+// ─────────────────────────────────────
+// Starfield
+// ─────────────────────────────────────
+const starCount = 1800;
+const starGeo = new THREE.BufferGeometry();
+const starPos = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount; i++) {
+  const r = 60 + Math.random() * 140;
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(2 * Math.random() - 1);
+  starPos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+  starPos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+  starPos[i * 3 + 2] = r * Math.cos(phi);
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const starMat = new THREE.PointsMaterial({
+  color: 0x8899cc,
+  size: 0.22,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  transparent: true,
+  opacity: 0.7
+});
+scene.add(new THREE.Points(starGeo, starMat));
+
+// ─────────────────────────────────────
+// Reference grid
+// ─────────────────────────────────────
+const grid = new THREE.GridHelper(80, 40, 0x1a1a3a, 0x0d0d20);
+grid.position.y = -30;
+scene.add(grid);
+
+// ─────────────────────────────────────
+// Coordinate axes (subtle)
+// ─────────────────────────────────────
+function makeAxis(from, to, color) {
+  const geo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(...from),
+    new THREE.Vector3(...to)
+  ]);
+  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.3, depthTest: true });
+  return new THREE.Line(geo, mat);
+}
+scene.add(makeAxis([-50, 0, 0], [50, 0, 0], 0x443344));
+scene.add(makeAxis([0, -40, 0], [0, 50, 0], 0x334433));
+scene.add(makeAxis([0, 0, -20], [0, 0, 70], 0x334455));
+
+// ─────────────────────────────────────
+// Trajectory geometry helpers
+// ─────────────────────────────────────
+function createTrailGeometry() {
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array(MAX_POINTS * 3);
+  const colors = new Float32Array(MAX_POINTS * 3);
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.setDrawRange(0, 0);
+  return { geometry: geo, positions, colors };
+}
+
+const trailA = createTrailGeometry();
+const trailB = createTrailGeometry();
+
+const matA = new THREE.LineBasicMaterial({
+  vertexColors: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  depthTest: true,
+  transparent: true,
+  opacity: 0.9
+});
+const matB = new THREE.LineBasicMaterial({
+  vertexColors: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  depthTest: true,
+  transparent: true,
+  opacity: 0.9
+});
+
+const lineA = new THREE.Line(trailA.geometry, matA);
+const lineB = new THREE.Line(trailB.geometry, matB);
+scene.add(lineA);
+scene.add(lineB);
+
+// ─────────────────────────────────────
+// Head particles (glowing dots at trajectory tips)
+// ─────────────────────────────────────
+const headGeo = new THREE.SphereGeometry(0.32, 16, 16);
+const headMatA = new THREE.MeshBasicMaterial({ color: 0xffd060 });
+const headMatB = new THREE.MeshBasicMaterial({ color: 0x40e0ff });
+const headA = new THREE.Mesh(headGeo, headMatA);
+const headB = new THREE.Mesh(headGeo, headMatB);
+scene.add(headA);
+scene.add(headB);
+
+// ─────────────────────────────────────
+// Color functions — gradient along trail
+// ─────────────────────────────────────
+function warmColor(t) {
+  // t: 0 (tail, old) → 1 (head, new)
+  const r = 0.35 + t * 0.65;
+  const g = 0.05 + t * 0.65;
+  const b = 0.02 + t * 0.18;
+  return [r, g, b];
+}
+function coolColor(t) {
+  const r = 0.02 + t * 0.08;
+  const g = 0.18 + t * 0.60;
+  const b = 0.40 + t * 0.55;
+  return [r, g, b];
+}
+
+// ─────────────────────────────────────
+// Reset
+// ─────────────────────────────────────
+function resetTrails() {
+  pointCount = 0;
+  stateA = [1.0, 1.0, 1.0];
+  stateB = [1.001, 1.0, 1.0];
+  trailA.geometry.setDrawRange(0, 0);
+  trailB.geometry.setDrawRange(0, 0);
+  headA.position.set(1, 1, 1);
+  headB.position.set(1.001, 1, 1);
+}
+
+// ─────────────────────────────────────
+// Add a single point to a trail
+// ─────────────────────────────────────
+function addPoint(idx, x, y, z, positions, colors, colorFn) {
+  const i3 = idx * 3;
+  positions[i3] = x;
+  positions[i3 + 1] = y;
+  positions[i3 + 2] = z;
+  const [r, g, b] = colorFn(idx / (MAX_POINTS - 1));
+  colors[i3] = r;
+  colors[i3 + 1] = g;
+  colors[i3 + 2] = b;
+}
+
+// ─────────────────────────────────────
+// Update trajectories (called each frame)
+// ─────────────────────────────────────
+function updateTrails() {
+  if (paused) return;
+  for (let s = 0; s < STEPS_PER_FRAME; s++) {
+    if (pointCount >= MAX_POINTS) break;
+
+    stateA = rk4Step(stateA, DT, params.sigma, params.rho, params.beta);
+    stateB = rk4Step(stateB, DT, params.sigma, params.rho, params.beta);
+
+    addPoint(pointCount, stateA[0], stateA[1], stateA[2],
+      trailA.positions, trailA.colors, warmColor);
+    addPoint(pointCount, stateB[0], stateB[1], stateB[2],
+      trailB.positions, trailB.colors, coolColor);
+
+    pointCount++;
+  }
+
+  if (pointCount > 0) {
+    trailA.geometry.setDrawRange(0, pointCount);
+    trailA.geometry.attributes.position.needsUpdate = true;
+    trailA.geometry.attributes.color.needsUpdate = true;
+
+    trailB.geometry.setDrawRange(0, pointCount);
+    trailB.geometry.attributes.position.needsUpdate = true;
+    trailB.geometry.attributes.color.needsUpdate = true;
+
+    headA.position.set(stateA[0], stateA[1], stateA[2]);
+    headB.position.set(stateB[0], stateB[1], stateB[2]);
+  }
+}
+
+// ─────────────────────────────────────
+// Animation loop
+// ─────────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+  updateTrails();
+  controls.update();
+
+  // subtle head pulse
+  const pulse = 1 + 0.25 * Math.sin(performance.now() * 0.01);
+  headA.scale.setScalar(pulse);
+  headB.scale.setScalar(pulse);
+
+  composer.render();
+}
+
+// ─────────────────────────────────────
+// UI setup
+// ─────────────────────────────────────
+const sliderSigma = document.getElementById('sigma');
+const sliderRho = document.getElementById('rho');
+const sliderBeta = document.getElementById('beta');
+const valSigma = document.getElementById('sigma-val');
+const valRho = document.getElementById('rho-val');
+const valBeta = document.getElementById('beta-val');
+const btnReset = document.getElementById('btn-reset');
+const btnPause = document.getElementById('btn-pause');
+const btnTrail = document.getElementById('btn-trail');
+
+function onParamChange() {
+  params.sigma = parseFloat(sliderSigma.value);
+  params.rho = parseFloat(sliderRho.value);
+  params.beta = parseFloat(sliderBeta.value);
+  valSigma.textContent = params.sigma.toFixed(1);
+  valRho.textContent = params.rho.toFixed(1);
+  valBeta.textContent = params.beta.toFixed(2);
+  updateFormulaDisplay();
+  resetTrails();
+}
+
+sliderSigma.addEventListener('input', onParamChange);
+sliderRho.addEventListener('input', onParamChange);
+sliderBeta.addEventListener('input', onParamChange);
+
+btnReset.addEventListener('click', () => {
+  sliderSigma.value = 10;
+  sliderRho.value = 28;
+  sliderBeta.value = 2.667;
+  onParamChange();
+});
+
+btnPause.addEventListener('click', () => {
+  paused = !paused;
+  btnPause.textContent = paused ? t('play') : t('pause');
+});
+
+btnTrail.addEventListener('click', () => {
+  resetTrails();
+});
+
+// ─────────────────────────────────────
+// Resize handler
+// ─────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// keyboard shortcuts
+window.addEventListener('keydown', (e) => {
+  switch (e.key.toLowerCase()) {
+    case ' ':
+      e.preventDefault();
+      btnPause.click();
+      break;
+    case 'r':
+      if (!e.ctrlKey && !e.metaKey) { btnReset.click(); }
+      break;
+    case 'c':
+      if (!e.ctrlKey && !e.metaKey) { btnTrail.click(); }
+      break;
+  }
+});
+
+// ─────────────────────────────────────
+// Start
+// ─────────────────────────────────────
+updateLangUI();
+animate();
+</script>
+</body>
+</html>
