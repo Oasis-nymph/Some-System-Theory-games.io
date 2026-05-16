@@ -4,7 +4,7 @@ Edward Lorenz's 1963 system of three coupled ODEs is the iconic example of **det
 
 爱德华·洛伦兹 1963 年提出的三变量耦合常微分方程是**确定混沌**的经典范例：方程简单、无随机项，但轨迹永不重复，且对初始条件极度敏感——即**蝴蝶效应**。
 
-[**Live Demo / 在线演示**](https://<username>.github.io/<repo>/lorenz/)
+[**Live Demo / 在线演示**](https://oasis-nymph.github.io/Some-System-Theory-games.io/lorenz/)
 
 ## How to use / 使用方法
 
