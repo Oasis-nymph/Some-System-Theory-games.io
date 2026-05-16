@@ -344,11 +344,15 @@
 
 <div id="hint" data-i18n="hint">拖拽旋转 · 滚轮缩放 · 右键平移</div>
 
+<div id="load-error" style="display:none; position:fixed;z-index:100;bottom:60px;left:50%;transform:translateX(-50%);background:rgba(180,40,40,0.9);color:#fff;padding:10px 18px;border-radius:8px;font-size:0.78rem;text-align:center;max-width:90vw;">
+  <span data-i18n="cdn_error">CDN 加载失败，请关闭广告拦截器后刷新，或换用 Chrome/Edge 浏览器</span>
+</div>
+
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
   }
 }
 </script>
@@ -386,7 +390,8 @@ const i18n = {
     docs_chaos_title: '混沌特性',
     docs_chaos: '洛伦兹系统是「确定混沌」的典范：方程完全确定、无任何随机项，但长期行为对初始条件极度敏感。相空间中的轨迹被吸引到一个分形结构——奇异吸引子，形状似蝴蝶翅膀。系统在两个不稳定平衡点之间不规则切换，永远不重复，也永远无法精确预测。',
     docs_interact_title: '交互方式',
-    docs_interact: '页面展示两条轨迹——初始条件仅差 0.001，用来演示蝴蝶效应。橙金轨迹与青蓝轨迹从几乎重合到渐行渐远，最终占据不同「翅膀」。可用鼠标旋转/缩放/平移视角，拖动滑块实时改变参数观察系统行为变化。空格键暂停，R 键重置，C 键清轨迹。'
+    docs_interact: '页面展示两条轨迹——初始条件仅差 0.001，用来演示蝴蝶效应。橙金轨迹与青蓝轨迹从几乎重合到渐行渐远，最终占据不同「翅膀」。可用鼠标旋转/缩放/平移视角，拖动滑块实时改变参数观察系统行为变化。空格键暂停，R 键重置，C 键清轨迹。',
+    cdn_error: 'CDN 加载失败，请关闭广告拦截器后刷新，或换用 Chrome/Edge 浏览器'
   },
   en: {
     title: 'Lorenz Attractor',
@@ -410,7 +415,8 @@ const i18n = {
     docs_chaos_title: 'Deterministic Chaos',
     docs_chaos: 'The Lorenz system exemplifies "deterministic chaos": the equations contain no randomness, yet long-term behavior is exquisitely sensitive to initial conditions. In phase space, trajectories are drawn toward a fractal structure — the strange attractor — whose shape resembles butterfly wings. The system switches irregularly between two unstable equilibria, never repeating, never precisely predictable.',
     docs_interact_title: 'Interaction',
-    docs_interact: 'Two trajectories are shown with initial conditions differing by only 0.001, demonstrating the butterfly effect. The warm (orange-gold) and cool (cyan-blue) trails start nearly overlapping and gradually diverge to occupy opposite "wings." Drag to rotate, scroll to zoom, right-drag to pan. Adjust sliders to change parameters in real time. Space = pause, R = reset, C = clear trails.'
+    docs_interact: 'Two trajectories are shown with initial conditions differing by only 0.001, demonstrating the butterfly effect. The warm (orange-gold) and cool (cyan-blue) trails start nearly overlapping and gradually diverge to occupy opposite "wings." Drag to rotate, scroll to zoom, right-drag to pan. Adjust sliders to change parameters in real time. Space = pause, R = reset, C = clear trails.',
+    cdn_error: 'CDN load failed. Please disable your ad blocker and refresh, or try Chrome/Edge.'
   }
 };
 
@@ -495,7 +501,8 @@ function rk4Step(state, dt, sigma, rho, beta) {
 // ─────────────────────────────────────
 // Simulation state
 // ─────────────────────────────────────
-const MAX_POINTS = 18000;
+const MAX_POINTS = 25000;
+const KEEP_RATIO = 0.6;
 const DT = 0.004;
 const STEPS_PER_FRAME = 5;
 
@@ -677,14 +684,37 @@ function resetTrails() {
 }
 
 // ─────────────────────────────────────
+// Shift buffer — keep most recent portion when full
+// ─────────────────────────────────────
+function shiftBuffer(positions, colors, colorFn, activeCount) {
+  const keep = Math.floor(activeCount * KEEP_RATIO);
+  const drop = activeCount - keep;
+  for (let i = 0; i < keep; i++) {
+    const src = (drop + i) * 3;
+    const dst = i * 3;
+    positions[dst] = positions[src];
+    positions[dst + 1] = positions[src + 1];
+    positions[dst + 2] = positions[src + 2];
+  }
+  for (let i = 0; i < keep; i++) {
+    const [r, g, b] = colorFn(i / (keep - 1));
+    const i3 = i * 3;
+    colors[i3] = r;
+    colors[i3 + 1] = g;
+    colors[i3 + 2] = b;
+  }
+  return keep;
+}
+
+// ─────────────────────────────────────
 // Add a single point to a trail
 // ─────────────────────────────────────
-function addPoint(idx, x, y, z, positions, colors, colorFn) {
+function addPoint(idx, x, y, z, positions, colors, colorFn, totalActive) {
   const i3 = idx * 3;
   positions[i3] = x;
   positions[i3 + 1] = y;
   positions[i3 + 2] = z;
-  const [r, g, b] = colorFn(idx / (MAX_POINTS - 1));
+  const [r, g, b] = colorFn(idx / (totalActive - 1));
   colors[i3] = r;
   colors[i3 + 1] = g;
   colors[i3 + 2] = b;
@@ -696,15 +726,18 @@ function addPoint(idx, x, y, z, positions, colors, colorFn) {
 function updateTrails() {
   if (paused) return;
   for (let s = 0; s < STEPS_PER_FRAME; s++) {
-    if (pointCount >= MAX_POINTS) break;
+    if (pointCount >= MAX_POINTS) {
+      pointCount = shiftBuffer(trailA.positions, trailA.colors, warmColor, pointCount);
+      shiftBuffer(trailB.positions, trailB.colors, coolColor, pointCount);
+    }
 
     stateA = rk4Step(stateA, DT, params.sigma, params.rho, params.beta);
     stateB = rk4Step(stateB, DT, params.sigma, params.rho, params.beta);
 
     addPoint(pointCount, stateA[0], stateA[1], stateA[2],
-      trailA.positions, trailA.colors, warmColor);
+      trailA.positions, trailA.colors, warmColor, pointCount + 1);
     addPoint(pointCount, stateB[0], stateB[1], stateB[2],
-      trailB.positions, trailB.colors, coolColor);
+      trailB.positions, trailB.colors, coolColor, pointCount + 1);
 
     pointCount++;
   }
@@ -814,6 +847,13 @@ window.addEventListener('keydown', (e) => {
 // ─────────────────────────────────────
 updateLangUI();
 animate();
+
+// CDN load failure detection
+setTimeout(() => {
+  if (typeof THREE === 'undefined' || !scene) {
+    document.getElementById('load-error').style.display = 'block';
+  }
+}, 8000);
 </script>
 </body>
 </html>
