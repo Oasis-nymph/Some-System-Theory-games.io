@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attention Heatmap — Scaled Dot-Product 注意力热力图</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f0f14;
+  --surface: #1a1a24;
+  --border: #2a2a3a;
+  --text: #e0e0e0;
+  --text-dim: #888;
+  --accent: #f59e0b;
+  --accent-glow: rgba(245, 158, 11, 0.25);
+  --info: #60a5fa;
+  --radius: 8px;
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  user-select: none;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), #fbbf24);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.header .subtitle {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+.lang-btn {
+  padding: 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-family: var(--font);
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.lang-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── MAIN LAYOUT ── */
+.main-container {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+  max-width: 1300px;
+  flex: 1;
+}
+
+.canvas-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  min-height: 460px;
+  min-width: 0;
+  position: relative;
+}
+canvas { display: block; }
+#canvasMain { cursor: crosshair; }
+
+/* ── LEFT SIDEBAR (Concept Explanations) ── */
+.left-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.left-sidebar .concept-block {
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 6px;
+  border-left: 3px solid var(--accent);
+}
+.left-sidebar .concept-block h4 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 4px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.left-sidebar .concept-block p {
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.left-sidebar .concept-block .math-inline {
+  font-family: var(--font-mono);
+  color: var(--info);
+  font-size: 0.76rem;
+}
+.left-sidebar .concept-block .hl {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ── RIGHT SIDEBAR (Controls) ── */
+.sidebar {
+  width: 270px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.section-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+/* Input area */
+.input-row {
+  display: flex;
+  gap: 6px;
+}
+#textInput {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.88rem;
+  font-family: var(--font);
+  outline: none;
+  transition: border 0.2s;
+}
+#textInput:focus { border-color: var(--accent); }
+#btnSubmit {
+  padding: 8px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #000;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  font-family: var(--font);
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+#btnSubmit:hover { background: #fbbf24; }
+#btnSubmit:active { transform: scale(0.97); }
+
+/* Example buttons */
+.examples { display: flex; flex-wrap: wrap; gap: 5px; }
+.examples button {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-family: var(--font);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.examples button:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Stage selector */
+.stage-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.stage-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-family: var(--font-mono);
+  text-align: left;
+  transition: all 0.15s;
+}
+.stage-btn:hover { border-color: var(--info); color: var(--text); }
+.stage-btn.active {
+  border-color: var(--accent);
+  background: #1e1a14;
+  color: var(--accent);
+  font-weight: 600;
+}
+.stage-btn .stage-icon {
+  font-size: 1rem;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Head tabs */
+.head-tabs {
+  display: flex;
+  gap: 6px;
+}
+.head-tab {
+  flex: 1;
+  padding: 7px 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  text-align: center;
+  transition: all 0.15s;
+}
+.head-tab:hover { border-color: var(--info); }
+.head-tab.active {
+  border-color: var(--accent);
+  background: #1e1a14;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Color scale legend */
+#legendCanvas { display: block; border-radius: 4px; }
+
+/* Hover info */
+#hoverInfo {
+  font-size: 0.82rem;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  min-height: 3em;
+  line-height: 1.6;
+}
+#hoverInfo .highlight { color: var(--accent); font-weight: 600; }
+
+/* Overview panel */
+.overview-panel {
+  width: 100%;
+  max-width: 1300px;
+  margin-top: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.overview-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+#canvasOverview { flex: 1; }
+
+/* Formula display */
+.formula-bar {
+  width: 100%;
+  max-width: 1300px;
+  margin-top: 8px;
+  padding: 8px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+.formula-bar .active-step { color: var(--accent); font-weight: 600; }
+
+.footer {
+  margin-top: 10px;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+.footer a { color: var(--accent); text-decoration: none; }
+.footer a:hover { text-decoration: underline; }
+.footer .divider { margin: 0 10px; opacity: 0.3; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 1100px) {
+  .main-container { flex-wrap: wrap; }
+  .left-sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; gap: 10px; max-height: 200px; }
+  .left-sidebar .concept-block { flex: 1; min-width: 160px; }
+  .canvas-panel { min-height: 360px; min-width: 300px; }
+  .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; gap: 10px; }
+  .sidebar > div { flex: 1; min-width: 150px; }
+}
+@media (max-width: 600px) {
+  .header h1 { font-size: 1.1rem; }
+  .left-sidebar { max-height: 160px; flex-direction: column; }
+  .sidebar { flex-direction: column; }
+  .canvas-panel { min-height: 280px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div style="text-align:center">
+    <h1 data-i18n="title">Scaled Dot-Product Attention</h1>
+    <div class="subtitle" data-i18n="subtitle">缩放点积注意力 — 交互式热力图</div>
+  </div>
+  <button class="lang-btn" id="langToggle" data-i18n="langLabel">English</button>
+</div>
+
+<div class="main-container" id="mainContainer">
+  <div class="left-sidebar" id="leftSidebar">
+    <div class="concept-block" id="concBackground">
+      <h4 data-i18n="concBgTitle">背景：为什么需要 Attention？</h4>
+      <p data-i18n="concBgBody">RNN 必须按顺序逐词处理（h<sub>t</sub> 依赖 h<sub>t-1</sub>），无法并行、长距离依赖弱。<span class="hl">Attention 一步直接连接任意两个词</span>，路径长度 O(1)。论文 Section 4 对比了三种架构（Table 1）。</p>
+    </div>
+    <div class="concept-block" id="concQKV">
+      <h4 data-i18n="concQkvTitle">Q、K、V 是什么？</h4>
+      <p data-i18n="concQkvBody">输入 X ∈ <span class="math-inline">R<sup>n×d</sup></span> 分别乘以三组可学习投影矩阵 W<sup>Q</sup>, W<sup>K</sup>, W<sup>V</sup> 得到 Query、Key、Value。<br><span class="hl">Query</span>："我想查什么"<br><span class="hl">Key</span>："我有什么标签"<br><span class="hl">Value</span>："我的实际内容"<br>（论文 Section 3.2）</p>
+    </div>
+    <div class="concept-block" id="concScaled">
+      <h4 data-i18n="concScaledTitle">为什么除以 √d<sub>k</sub> ？</h4>
+      <p data-i18n="concScaledBody">假设 q,k 各分量独立且 Var=1，则 <span class="math-inline">Var(q·k)=d<sub>k</sub></span>。d<sub>k</sub>=8 时内积标准差约 2.8，不缩放直接送 softmax → 接近 one-hot → <span class="hl">梯度消失</span>。除以 √d<sub>k</sub> 将方差归一化到 1。论文 Section 3.2.1 尾注解释了这一点。</p>
+    </div>
+    <div class="concept-block" id="concMultiHead">
+      <h4 data-i18n="concMhTitle">多头注意力（Section 3.2.2）</h4>
+      <p data-i18n="concMhBody">单头只能捕捉一种"关注模式"。<span class="hl">h=4 个并行头</span>各自在低维子空间 R<sup>8</sup> 中独立计算 Attention，最后拼接回 R<sup>32</sup>。<br>Head 0：恒等投影（语义头）<br>Head 1–3：随机高斯投影<br>下方色条可对比四头不同模式。</p>
+    </div>
+    <div class="concept-block" id="concRead">
+      <h4 data-i18n="concReadTitle">如何阅读热力图？</h4>
+      <p data-i18n="concReadBody">每<span class="hl">行</span> = 一个 Query（"谁在看"）<br>每<span class="hl">列</span> = 一个 Key（"被谁看"）<br>颜色越亮 = 注意力权重越高。<br>每行权重之和 = 1（概率分布）。<br>悬停单元格查看精确数值。</p>
+    </div>
+  </div>
+
+  <div class="canvas-panel" id="canvasPanel">
+    <canvas id="canvasMain"></canvas>
+  </div>
+
+  <div class="sidebar" id="sidebar">
+    <div>
+      <div class="section-title" data-i18n="inputTitle">输入句子</div>
+      <div class="input-row">
+        <input type="text" id="textInput" value="The cat sat on the mat" data-i18n-placeholder="placeholder">
+        <button id="btnSubmit" data-i18n="compute">计算</button>
+      </div>
+      <div class="examples" style="margin-top:6px">
+        <button data-text="The cat sat on the mat">The cat sat on the mat</button>
+        <button data-text="I love math and physics">I love math and physics</button>
+        <button data-text="She reads a book in the park">She reads a book in the park</button>
+        <button data-text="They eat red apples and drink water">They eat red apples and drink water</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title" data-i18n="stageTitle">计算步骤</div>
+      <div class="stage-group" id="stageGroup">
+        <button class="stage-btn" data-stage="0">
+          <span class="stage-icon">S</span><span data-i18n="stage0">S = Q·K^T（原始相似度）</span>
+        </button>
+        <button class="stage-btn" data-stage="1">
+          <span class="stage-icon">Ŝ</span><span data-i18n="stage1">S / √d_k（缩放后）</span>
+        </button>
+        <button class="stage-btn active" data-stage="2">
+          <span class="stage-icon">A</span><span data-i18n="stage2">A = softmax(S/√d_k)（注意力权重）</span>
+        </button>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title" data-i18n="headTitle">注意力头 (h=4, d_k=8)</div>
+      <div class="head-tabs" id="headTabs">
+        <button class="head-tab active" data-head="0">Head 0</button>
+        <button class="head-tab" data-head="1">Head 1</button>
+        <button class="head-tab" data-head="2">Head 2</button>
+        <button class="head-tab" data-head="3">Head 3</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title" data-i18n="legendTitle">色阶</div>
+      <canvas id="legendCanvas" width="256" height="20"></canvas>
+      <div style="display:flex;justify-content:space-between;font-size:0.7rem;font-family:var(--font-mono);color:var(--text-dim);margin-top:2px">
+        <span id="legendMin">0.00</span><span id="legendMax">1.00</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title" data-i18n="hoverTitle">悬停详情</div>
+      <div id="hoverInfo">
+        <span data-i18n="hoverHint">鼠标悬停热力图单元格查看详情</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overview-panel">
+  <div class="overview-label" data-i18n="overviewLabel">四头对比</div>
+  <canvas id="canvasOverview"></canvas>
+</div>
+
+<div class="formula-bar">
+  <span data-i18n="formulaLabel">当前公式：</span>
+  <span id="formulaDisplay" class="active-step">Attention(Q,K,V) = softmax(Q·K^T / √d_k) · V</span>
+</div>
+
+<div class="footer">
+  Created by <strong>BW</strong>
+  <span class="divider">|</span>
+  <span data-i18n="footerRef">Vaswani et al., "Attention Is All You Need", NeurIPS 2017, Section 3.2.1</span>
+</div>
+
+<script>
+// ============================================================
+//  Interactive Attention Heatmap
+//  Shows Scaled Dot-Product Attention step by step
+//  d_model=32, h=4, d_k=8, d_v=8
+// ============================================================
+
+// ── i18n ──
+const i18n = {
+  zh: {
+    title: 'Scaled Dot-Product Attention',
+    subtitle: '缩放点积注意力 — 交互式热力图',
+    langLabel: 'English',
+    concBgTitle: '背景：为什么需要 Attention？',
+    concBgBody: 'RNN 必须按顺序逐词处理（h<sub>t</sub> 依赖 h<sub>t-1</sub>），无法并行、长距离依赖弱。<span class="hl">Attention 一步直接连接任意两个词</span>，路径长度 O(1)。论文 Section 4 对比了三种架构（Table 1）。',
+    concQkvTitle: 'Q、K、V 是什么？',
+    concQkvBody: '输入 X ∈ <span class="math-inline">R<sup>n×d</sup></span> 分别乘以三组可学习投影矩阵 W<sup>Q</sup>, W<sup>K</sup>, W<sup>V</sup> 得到 Query、Key、Value。<br><span class="hl">Query</span>："我想查什么"<br><span class="hl">Key</span>："我有什么标签"<br><span class="hl">Value</span>："我的实际内容"<br>（论文 Section 3.2）',
+    concScaledTitle: '为什么除以 √d<sub>k</sub> ？',
+    concScaledBody: '假设 q,k 各分量独立且 Var=1，则 <span class="math-inline">Var(q·k)=d<sub>k</sub></span>。d<sub>k</sub>=8 时内积标准差约 2.8，不缩放直接送 softmax → 接近 one-hot → <span class="hl">梯度消失</span>。除以 √d<sub>k</sub> 将方差归一化到 1。论文 Section 3.2.1 尾注解释了这一点。',
+    concMhTitle: '多头注意力（Section 3.2.2）',
+    concMhBody: '单头只能捕捉一种"关注模式"。<span class="hl">h=4 个并行头</span>各自在低维子空间 R<sup>8</sup> 中独立计算 Attention，最后拼接回 R<sup>32</sup>。<br>Head 0：恒等投影（语义头）<br>Head 1–3：随机高斯投影<br>下方色条可对比四头不同模式。',
+    concReadTitle: '如何阅读热力图？',
+    concReadBody: '每<span class="hl">行</span> = 一个 Query（"谁在看"）<br>每<span class="hl">列</span> = 一个 Key（"被谁看"）<br>颜色越亮 = 注意力权重越高。<br>每行权重之和 = 1（概率分布）。<br>悬停单元格查看精确数值。',
+    inputTitle: '输入句子',
+    placeholder: '输入英文句子...',
+    compute: '计算',
+    stageTitle: '计算步骤',
+    stage0: 'S = Q·K^T（原始相似度）',
+    stage1: 'S / √d_k（缩放后）',
+    stage2: 'A = softmax(S/√d_k)（注意力权重）',
+    headTitle: '注意力头 (h=4, d_k=8)',
+    legendTitle: '色阶',
+    hoverTitle: '悬停详情',
+    hoverHint: '鼠标悬停热力图单元格查看详情',
+    overviewLabel: '四头对比',
+    formulaLabel: '当前公式：',
+    footerRef: 'Vaswani et al., "Attention Is All You Need", NeurIPS 2017, Section 3.2.1',
+    formula0: 'S = Q·K^T',
+    formula1: 'S_hat = Q·K^T / √d_k',
+    formula2: 'A = softmax(Q·K^T / √d_k)',
+  },
+  en: {
+    title: 'Scaled Dot-Product Attention',
+    subtitle: 'Scaled Dot-Product Attention — Interactive Heatmap',
+    langLabel: '中文',
+    concBgTitle: 'Background: Why Attention?',
+    concBgBody: 'RNNs process tokens sequentially (h<sub>t</sub> depends on h<sub>t-1</sub>) — no parallelism, weak long-range dependencies. <span class="hl">Attention connects any two tokens in one step</span>, path length O(1). See Section 4, Table 1 for the three-way complexity comparison.',
+    concQkvTitle: 'What are Q, K, V?',
+    concQkvBody: 'Input X ∈ <span class="math-inline">R<sup>n×d</sup></span> is multiplied by three learnable projection matrices W<sup>Q</sup>, W<sup>K</sup>, W<sup>V</sup>.<br><span class="hl">Query</span>: "What am I looking for?"<br><span class="hl">Key</span>: "What label do I have?"<br><span class="hl">Value</span>: "What is my actual content?"<br>(Section 3.2)',
+    concScaledTitle: 'Why divide by √d<sub>k</sub>?',
+    concScaledBody: 'If q,k components are i.i.d. with Var=1, then <span class="math-inline">Var(q·k)=d<sub>k</sub></span>. Without scaling, large dot products push softmax into near-one-hot → <span class="hl">vanishing gradients</span>. Dividing by √d<sub>k</sub> normalizes variance back to 1. (Section 3.2.1 footnote)',
+    concMhTitle: 'Multi-Head Attention (Section 3.2.2)',
+    concMhBody: 'A single head captures only one "attention pattern". <span class="hl">h=4 parallel heads</span> each compute Attention in a low-dim subspace R<sup>8</sup>, then concatenate back to R<sup>32</sup>.<br>Head 0: identity projection (semantic)<br>Heads 1–3: random Gaussian projections<br>Compare all four in the overview bar below.',
+    concReadTitle: 'How to Read the Heatmap?',
+    concReadBody: 'Each <span class="hl">row</span> = a Query ("who is looking")<br>Each <span class="hl">column</span> = a Key ("who is looked at")<br>Brighter color = higher attention weight.<br>Each row sums to 1 (probability distribution).<br>Hover over any cell for exact values.',
+    inputTitle: 'Input Sentence',
+    placeholder: 'Enter English sentence...',
+    compute: 'Compute',
+    stageTitle: 'Stage',
+    stage0: 'S = Q·K^T (raw scores)',
+    stage1: 'S / √d_k (scaled)',
+    stage2: 'A = softmax(S/√d_k) (attention weights)',
+    headTitle: 'Attention Heads (h=4, d_k=8)',
+    legendTitle: 'Color Scale',
+    hoverTitle: 'Hover Detail',
+    hoverHint: 'Hover over cells to see details',
+    overviewLabel: 'All Heads',
+    formulaLabel: 'Current: ',
+    footerRef: 'Vaswani et al., "Attention Is All You Need", NeurIPS 2017, Section 3.2.1',
+    formula0: 'S = Q·K^T',
+    formula1: 'S_hat = Q·K^T / √d_k',
+    formula2: 'A = softmax(Q·K^T / √d_k)',
+  }
+};
+
+let lang = 'zh';
+function t(key) { return i18n[lang][key] || key; }
+function updateI18n() {
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.getAttribute('data-i18n'));
+  });
+  document.getElementById('langToggle').textContent = lang === 'zh' ? 'English' : '中文';
+  document.getElementById('textInput').placeholder = t('placeholder');
+  document.getElementById('hoverInfo').innerHTML = `<span data-i18n="hoverHint">${t('hoverHint')}</span>`;
+  // Left sidebar blocks use innerHTML (contain tags)
+  document.querySelectorAll('#leftSidebar [data-i18n]').forEach(el => {
+    el.innerHTML = t(el.getAttribute('data-i18n'));
+  });
+  updateFormulaDisplay();
+}
+
+// ── CONSTANTS ──
+const D_MODEL = 32;
+const H = 4;
+const D_K = 8;
+const D_V = 8;
+
+// ── SEEDED RANDOM ──
+let _seed = 42;
+function seededRandom() {
+  _seed = (_seed * 16807 + 0) % 2147483647;
+  return (_seed - 1) / 2147483646;
+}
+function gaussianRandom() {
+  let u = 0, v = 0;
+  while (u === 0) u = seededRandom();
+  while (v === 0) v = seededRandom();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+// ── PROJECTION MATRICES (fixed, deterministic) ──
+// W_Q[h], W_K[h], W_V[h]: each is (D_MODEL × D_K) or (D_MODEL × D_V)
+const WQ = [], WK = [], WV = [];
+_seed = 42;
+for (let hi = 0; hi < H; hi++) {
+  const wq = [], wk = [], wv = [];
+  // Head 0: identity-like (first D_K rows of identity) → semantic head
+  // Heads 1-3: random Gaussian
+  for (let r = 0; r < D_MODEL; r++) {
+    wq[r] = []; wk[r] = []; wv[r] = [];
+    for (let c = 0; c < D_K; c++) {
+      if (hi === 0 && r === c) { wq[r][c] = 1.0; wk[r][c] = 1.0; }
+      else if (hi === 0) { wq[r][c] = 0.0; wk[r][c] = 0.0; }
+      else { wq[r][c] = gaussianRandom() * 0.3; wk[r][c] = gaussianRandom() * 0.3; }
+    }
+    for (let c = 0; c < D_V; c++) {
+      if (hi === 0 && r === c) wv[r][c] = 1.0;
+      else if (hi === 0) wv[r][c] = 0.0;
+      else wv[r][c] = gaussianRandom() * 0.3;
+    }
+  }
+  WQ.push(wq); WK.push(wk); WV.push(wv);
+}
+
+// ── EMBEDDINGS ──
+// Semantic groups with centroids
+const SEMANTIC_GROUPS = {
+  articles: ['the','a','an','this','that','these','those'],
+  pronouns: ['i','you','he','she','they','we','it'],
+  animals:  ['cat','dog','bird','fish','horse','elephant','mouse'],
+  actions:  ['eat','run','see','give','make','take','go','come','sit','read','write','drink','play'],
+  descriptors: ['big','small','red','blue','old','new','fast','slow','good','bad'],
+  prepositions: ['in','on','at','by','with','from','to','for','of'],
+  objects:  ['book','table','house','car','apple','ball','chair','door','water','park','mat','math','physics'],
+};
+
+_seed = 0;
+function makeCentroid() {
+  const c = [];
+  for (let i = 0; i < D_MODEL; i++) c.push(gaussianRandom() * 0.5);
+  return c;
+}
+const groupCentroids = {};
+for (const g in SEMANTIC_GROUPS) { groupCentroids[g] = makeCentroid(); }
+
+// Build embedding cache
+const embedCache = {};
+function buildEmbedding(word) {
+  const w = word.toLowerCase();
+  if (embedCache[w]) return embedCache[w];
+
+  // Find semantic group
+  let group = null;
+  for (const g in SEMANTIC_GROUPS) {
+    if (SEMANTIC_GROUPS[g].includes(w)) { group = g; break; }
+  }
+
+  const emb = [];
+  if (group) {
+    const centroid = groupCentroids[group];
+    // Generate deterministic perturbation
+    _seed = 0;
+    for (let c of w) { _seed += c.charCodeAt(0); _seed = (_seed * 31) % 1000000; }
+    for (let i = 0; i < D_MODEL; i++) {
+      emb.push(centroid[i] + (seededRandom() - 0.5) * 0.4);
+    }
+  } else {
+    // Hash-based embedding for unknown words
+    for (let i = 0; i < D_MODEL; i++) {
+      let h = 0;
+      for (let j = 0; j < w.length; j++) {
+        h = ((h << 5) - h) + w.charCodeAt(j) + i * 31;
+        h |= 0;
+      }
+      emb.push((h % 1000) / 1000);
+    }
+  }
+  embedCache[w] = emb;
+  return emb;
+}
+
+// ── TOKENIZATION ──
+function tokenize(text) {
+  return text.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(w => w.length > 0);
+}
+
+// ── ATTENTION COMPUTATION ──
+function matMul(A, B) {
+  const m = A.length, k = A[0].length, n = B[0].length;
+  const C = new Array(m);
+  for (let i = 0; i < m; i++) {
+    C[i] = new Array(n).fill(0);
+    for (let j = 0; j < n; j++) {
+      for (let p = 0; p < k; p++) C[i][j] += A[i][p] * B[p][j];
+    }
+  }
+  return C;
+}
+
+function transpose(M) {
+  const rows = M.length, cols = M[0].length;
+  const T = new Array(cols);
+  for (let i = 0; i < cols; i++) {
+    T[i] = new Array(rows);
+    for (let j = 0; j < rows; j++) T[i][j] = M[j][i];
+  }
+  return T;
+}
+
+function softmaxRows(M) {
+  const R = M.length, C = M[0].length;
+  const out = new Array(R);
+  for (let i = 0; i < R; i++) {
+    let mx = -Infinity;
+    for (let j = 0; j < C; j++) if (M[i][j] > mx) mx = M[i][j];
+    let sum = 0;
+    const row = new Array(C);
+    for (let j = 0; j < C; j++) { row[j] = Math.exp(M[i][j] - mx); sum += row[j]; }
+    for (let j = 0; j < C; j++) row[j] /= sum;
+    out[i] = row;
+  }
+  return out;
+}
+
+function computeAttention(tokens, headIdx) {
+  const n = tokens.length;
+  // Get embeddings → X: (n × D_MODEL)
+  const X = tokens.map(t => buildEmbedding(t));
+
+  // Q = X @ WQ[h]  (n × D_K)
+  const Q = matMul(X, WQ[headIdx]);
+  // K = X @ WK[h]  (n × D_K)
+  const K = matMul(X, WK[headIdx]);
+  // V = X @ WV[h]  (n × D_V)
+  const V = matMul(X, WV[headIdx]);
+
+  // S = Q @ K^T  (n × n)
+  const S = matMul(Q, transpose(K));
+
+  // S_scaled = S / sqrt(d_k)
+  const scale = Math.sqrt(D_K);
+  const S_scaled = S.map(row => row.map(v => v / scale));
+
+  // A = softmax(S_scaled, axis=-1)
+  const A = softmaxRows(S_scaled);
+
+  // H = A @ V  (n × D_V)
+  const H = matMul(A, V);
+
+  return { X, Q, K, V, S, S_scaled, A, H, n };
+}
+
+// ── STATE ──
+let currentTokens = [];
+let currentResults = [];  // one per head
+let selectedHead = 0;
+let selectedStage = 2;  // 0=S, 1=S_scaled, 2=A
+let hoverCell = null;   // {r, c, value}
+
+function computeAll() {
+  currentResults = [];
+  for (let hi = 0; hi < H; hi++) {
+    currentResults.push(computeAttention(currentTokens, hi));
+  }
+  hoverCell = null;
+}
+
+// ── CANVAS SETUP ──
+const canvasMain = document.getElementById('canvasMain');
+const ctxMain = canvasMain.getContext('2d');
+const canvasPanel = document.getElementById('canvasPanel');
+const canvasOverview = document.getElementById('canvasOverview');
+const ctxOverview = canvasOverview.getContext('2d');
+const legendCanvas = document.getElementById('legendCanvas');
+const ctxLegend = legendCanvas.getContext('2d');
+
+const HEATMAP_MIN_SIZE = 280;
+const CELL_MIN = 18;
+const CELL_MAX = 52;
+const LABEL_FONT_SIZE = 12;
+const OVERVIEW_CELL = 16;
+const OVERVIEW_PAD_LEFT = 10;
+const PAD = 56; // space for labels
+
+function getStageMatrix(results, stage) {
+  if (stage === 0) return results.S;
+  if (stage === 1) return results.S_scaled;
+  return results.A;
+}
+
+function matrixRange(matrix) {
+  let mn = Infinity, mx = -Infinity;
+  for (const row of matrix) {
+    for (const v of row) {
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+    }
+  }
+  return { min: mn, max: mx };
+}
+
+// ── COLORMAP (simplified viridis-like) ──
+function colormap(t) {
+  // t in [0, 1]
+  const stops = [
+    { p: 0.00, r: 13,  g: 8,   b: 52  },  // deep purple
+    { p: 0.25, r: 33,  g: 87,  b: 140 },  // blue
+    { p: 0.50, r: 33,  g: 145, b: 140 },  // teal
+    { p: 0.75, r: 94,  g: 201, b: 98  },  // green
+    { p: 1.00, r: 253, g: 231, b: 37  },  // yellow
+  ];
+  let lo = stops[0], hi = stops[stops.length - 1];
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (t >= stops[i].p && t <= stops[i+1].p) {
+      lo = stops[i]; hi = stops[i+1]; break;
+    }
+  }
+  const frac = (t - lo.p) / (hi.p - lo.p);
+  const r = Math.round(lo.r + (hi.r - lo.r) * frac);
+  const g = Math.round(lo.g + (hi.g - lo.g) * frac);
+  const bb = Math.round(lo.b + (hi.b - lo.b) * frac);
+  return `rgb(${r},${g},${bb})`;
+}
+
+// ── DRAW LEGEND ──
+function drawLegend(minVal, maxVal) {
+  const w = legendCanvas.width, h = legendCanvas.height;
+  for (let x = 0; x < w; x++) {
+    ctxLegend.fillStyle = colormap(x / (w - 1));
+    ctxLegend.fillRect(x, 0, 1, h);
+  }
+  document.getElementById('legendMin').textContent = minVal.toFixed(3);
+  document.getElementById('legendMax').textContent = maxVal.toFixed(3);
+}
+
+// ── DRAW MAIN HEATMAP ──
+function drawMainHeatmap() {
+  const panelW = canvasPanel.clientWidth;
+  const panelH = canvasPanel.clientHeight;
+  const n = currentTokens.length;
+  if (n === 0) return;
+
+  const results = currentResults[selectedHead];
+  if (!results) return;
+  const matrix = getStageMatrix(results, selectedStage);
+  const { min, max } = matrixRange(matrix);
+
+  // Calculate cell size
+  const availW = panelW - PAD * 2;
+  const availH = panelH - PAD * 2;
+  let cellSize = Math.min(Math.floor(availW / n), Math.floor(availH / n));
+  if (cellSize < CELL_MIN) cellSize = CELL_MIN;
+  if (cellSize > CELL_MAX) cellSize = CELL_MAX;
+
+  const totalW = n * cellSize;
+  const totalH = n * cellSize;
+  canvasMain.width = totalW + PAD * 2;
+  canvasMain.height = totalH + PAD * 2;
+
+  ctxMain.clearRect(0, 0, canvasMain.width, canvasMain.height);
+
+  // Draw cells
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      const val = matrix[r][c];
+      const tNorm = (val - min) / (max - min + 1e-9);
+      const x = PAD + c * cellSize;
+      const y = PAD + r * cellSize;
+      ctxMain.fillStyle = colormap(tNorm);
+      ctxMain.fillRect(x, y, cellSize, cellSize);
+
+      // Highlight hover cell
+      if (hoverCell && hoverCell.r === r && hoverCell.c === c) {
+        ctxMain.strokeStyle = '#ffffff';
+        ctxMain.lineWidth = 2;
+        ctxMain.strokeRect(x + 0.5, y + 0.5, cellSize - 1, cellSize - 1);
+      }
+
+      // Text in cell (if large enough)
+      if (cellSize >= 36) {
+        ctxMain.fillStyle = tNorm > 0.5 ? '#000' : '#fff';
+        ctxMain.font = `${Math.floor(cellSize * 0.32)}px ${getComputedStyle(document.body).getPropertyValue('--font-mono')}`;
+        ctxMain.textAlign = 'center';
+        ctxMain.textBaseline = 'middle';
+        ctxMain.fillText(val.toFixed(2), PAD + c * cellSize + cellSize / 2, PAD + r * cellSize + cellSize / 2);
+      }
+    }
+  }
+
+  // Draw labels
+  ctxMain.fillStyle = '#888';
+  ctxMain.font = `${LABEL_FONT_SIZE}px ${getComputedStyle(document.body).getPropertyValue('--font-mono')}`;
+  ctxMain.textAlign = 'right';
+  ctxMain.textBaseline = 'middle';
+  for (let r = 0; r < n; r++) {
+    // Truncate long labels
+    let label = currentTokens[r];
+    if (label.length > 8) label = label.substring(0, 7) + '..';
+    ctxMain.fillText(label, PAD - 6, PAD + r * cellSize + cellSize / 2);
+  }
+
+  ctxMain.save();
+  ctxMain.textAlign = 'left';
+  ctxMain.textBaseline = 'bottom';
+  const maxLabelLen = Math.max(...currentTokens.map(t => Math.min(t.length, 8)));
+  const colAngle = maxLabelLen > 4 ? -0.6 : 0;
+  for (let c = 0; c < n; c++) {
+    let label = currentTokens[c];
+    if (label.length > 8) label = label.substring(0, 7) + '..';
+    const x = PAD + c * cellSize + cellSize / 2;
+    const y = PAD - 6;
+    if (colAngle !== 0) {
+      ctxMain.save();
+      ctxMain.translate(x, y);
+      ctxMain.rotate(colAngle);
+      ctxMain.textAlign = 'right';
+      ctxMain.textBaseline = 'middle';
+      ctxMain.fillText(label, 0, 0);
+      ctxMain.restore();
+    } else {
+      ctxMain.textAlign = 'center';
+      ctxMain.textBaseline = 'bottom';
+      ctxMain.fillText(label, x, y);
+    }
+  }
+  ctxMain.restore();
+
+  // Axis labels
+  ctxMain.fillStyle = '#666';
+  ctxMain.font = `10px ${getComputedStyle(document.body).getPropertyValue('--font')}`;
+  ctxMain.textAlign = 'center';
+  ctxMain.textBaseline = 'top';
+  ctxMain.fillText(t('hoverHint'), canvasMain.width / 2, PAD + totalH + 10);
+
+  // Draw legend
+  drawLegend(min, max);
+}
+
+// ── DRAW OVERVIEW ──
+function drawOverview() {
+  const n = currentTokens.length;
+  if (n === 0) return;
+
+  const gap = 12;
+  const cellSize = Math.max(8, Math.min(OVERVIEW_CELL, Math.floor(200 / n)));
+  const wPerHead = n * cellSize;
+  const fullW = H * wPerHead + (H - 1) * gap + OVERVIEW_PAD_LEFT * 2;
+  const h = n * cellSize;
+
+  canvasOverview.width = fullW;
+  canvasOverview.height = h;
+  ctxOverview.clearRect(0, 0, fullW, h);
+
+  // Find global min/max across all heads for consistent coloring
+  let gMin = Infinity, gMax = -Infinity;
+  for (let hi = 0; hi < H; hi++) {
+    const { min, max } = matrixRange(currentResults[hi].A);
+    if (min < gMin) gMin = min;
+    if (max > gMax) gMax = max;
+  }
+
+  for (let hi = 0; hi < H; hi++) {
+    const A = currentResults[hi].A;
+    const ox = OVERVIEW_PAD_LEFT + hi * (wPerHead + gap);
+
+    // Head label
+    ctxOverview.fillStyle = hi === selectedHead ? '#f59e0b' : '#666';
+    ctxOverview.font = `9px ${getComputedStyle(document.body).getPropertyValue('--font-mono')}`;
+    ctxOverview.textAlign = 'center';
+    ctxOverview.textBaseline = 'bottom';
+    ctxOverview.fillText(`H${hi}`, ox + wPerHead / 2, h);
+
+    // Highlight selected head
+    if (hi === selectedHead) {
+      ctxOverview.strokeStyle = '#f59e0b';
+      ctxOverview.lineWidth = 2;
+      ctxOverview.strokeRect(ox - 2, -1, wPerHead + 4, h + 2);
+    }
+
+    // Draw cells
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        const val = A[r][c];
+        const tn = (val - gMin) / (gMax - gMin + 1e-9);
+        ctxOverview.fillStyle = colormap(tn);
+        ctxOverview.fillRect(ox + c * cellSize, r * cellSize, cellSize, cellSize);
+      }
+    }
+  }
+}
+
+// ── UPDATE FORMULA DISPLAY ──
+function updateFormulaDisplay() {
+  const el = document.getElementById('formulaDisplay');
+  const key = 'formula' + selectedStage;
+  el.textContent = t(key);
+}
+
+// ── UPDATE ALL ──
+function updateAll() {
+  drawMainHeatmap();
+  drawOverview();
+  updateFormulaDisplay();
+  updateHoverInfo();
+}
+
+// ── HOVER ──
+function updateHoverInfo() {
+  const div = document.getElementById('hoverInfo');
+  if (!hoverCell || currentTokens.length === 0) {
+    div.innerHTML = `<span>${t('hoverHint')}</span>`;
+    return;
+  }
+  const results = currentResults[selectedHead];
+  const matrix = getStageMatrix(results, selectedStage);
+  const val = matrix[hoverCell.r][hoverCell.c];
+  const from = currentTokens[hoverCell.c];  // col = key (source)
+  const to = currentTokens[hoverCell.r];     // row = query (target)
+  div.innerHTML =
+    `<span class="highlight">"${to}"</span> ← <span class="highlight">"${from}"</span><br>` +
+    `A[<span class="highlight">${hoverCell.r}</span>][<span class="highlight">${hoverCell.c}</span>] = <span class="highlight">${val.toFixed(4)}</span>`;
+}
+
+function canvasToCell(e) {
+  const rect = canvasMain.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const n = currentTokens.length;
+  if (n === 0) return null;
+  const cellSize = (canvasMain.width - PAD * 2) / n;
+  const cx = Math.floor((mx - PAD) / cellSize);
+  const cy = Math.floor((my - PAD) / cellSize);
+  if (cx >= 0 && cx < n && cy >= 0 && cy < n) {
+    const results = currentResults[selectedHead];
+    const matrix = getStageMatrix(results, selectedStage);
+    return { r: cy, c: cx, value: matrix[cy][cx] };
+  }
+  return null;
+}
+
+canvasMain.addEventListener('mousemove', e => {
+  hoverCell = canvasToCell(e);
+  if (hoverCell) {
+    canvasMain.style.cursor = 'pointer';
+  } else {
+    canvasMain.style.cursor = 'crosshair';
+  }
+  drawMainHeatmap();
+  updateHoverInfo();
+});
+canvasMain.addEventListener('mouseleave', () => {
+  hoverCell = null;
+  drawMainHeatmap();
+  updateHoverInfo();
+});
+
+// Touch support
+canvasMain.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  hoverCell = canvasToCell(touch);
+  drawMainHeatmap();
+  updateHoverInfo();
+});
+canvasMain.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  hoverCell = canvasToCell(touch);
+  drawMainHeatmap();
+  updateHoverInfo();
+});
+canvasMain.addEventListener('touchend', () => {
+  hoverCell = null;
+  drawMainHeatmap();
+  updateHoverInfo();
+});
+
+// ── CONTROLS ──
+document.getElementById('btnSubmit').addEventListener('click', () => {
+  const text = document.getElementById('textInput').value.trim();
+  if (!text) return;
+  currentTokens = tokenize(text);
+  if (currentTokens.length === 0) return;
+  if (currentTokens.length > 20) {
+    currentTokens = currentTokens.slice(0, 20);
+  }
+  computeAll();
+  selectedHead = 0;
+  selectedStage = 2;
+  document.querySelectorAll('.head-tab').forEach((b, i) => b.classList.toggle('active', i === 0));
+  document.querySelectorAll('.stage-btn').forEach((b, i) => b.classList.toggle('active', i === 2));
+  updateAll();
+});
+
+// Example buttons
+document.querySelectorAll('.examples button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const text = btn.getAttribute('data-text');
+    document.getElementById('textInput').value = text;
+    document.getElementById('btnSubmit').click();
+  });
+});
+
+// Enter key in input
+document.getElementById('textInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('btnSubmit').click();
+});
+
+// Stage selector
+document.getElementById('stageGroup').addEventListener('click', e => {
+  const btn = e.target.closest('.stage-btn');
+  if (!btn) return;
+  selectedStage = parseInt(btn.getAttribute('data-stage'));
+  document.querySelectorAll('.stage-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  updateAll();
+});
+
+// Head tabs
+document.getElementById('headTabs').addEventListener('click', e => {
+  const btn = e.target.closest('.head-tab');
+  if (!btn) return;
+  selectedHead = parseInt(btn.getAttribute('data-head'));
+  document.querySelectorAll('.head-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  updateAll();
+});
+
+// Language toggle
+document.getElementById('langToggle').addEventListener('click', () => {
+  lang = lang === 'zh' ? 'en' : 'zh';
+  updateI18n();
+  updateAll();
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  switch (e.key) {
+    case '1': selectedStage = 0; applyStageUI(); break;
+    case '2': selectedStage = 1; applyStageUI(); break;
+    case '3': selectedStage = 2; applyStageUI(); break;
+    case 'ArrowLeft': selectedHead = Math.max(0, selectedHead - 1); applyHeadUI(); break;
+    case 'ArrowRight': selectedHead = Math.min(H - 1, selectedHead + 1); applyHeadUI(); break;
+    case 'r': computeAll(); updateAll(); break;
+  }
+});
+
+function applyStageUI() {
+  document.querySelectorAll('.stage-btn').forEach((b, i) => b.classList.toggle('active', i === selectedStage));
+  updateAll();
+}
+function applyHeadUI() {
+  document.querySelectorAll('.head-tab').forEach((b, i) => b.classList.toggle('active', i === selectedHead));
+  updateAll();
+}
+
+// ── RESIZE ──
+function resize() {
+  drawMainHeatmap();
+  drawOverview();
+}
+window.addEventListener('resize', resize);
+
+// ── INIT ──
+function init() {
+  updateI18n();
+  // Load default example
+  currentTokens = tokenize('The cat sat on the mat');
+  computeAll();
+  updateAll();
+}
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
